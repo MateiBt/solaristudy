@@ -50,6 +50,7 @@ export default function RootLayout() {
         <Drawer.Screen name="leaderboards" options={{ drawerLabel: 'Leaderboards', title: 'Rankings' }} />
         <Drawer.Screen name="settings" options={{ drawerLabel: 'Settings', title: 'Account Settings' }} />
         <Drawer.Screen name="chat/[id]" options={{ drawerItemStyle: { display: 'none' }, headerShown: false }} />
+        <Drawer.Screen name="login" options={{ drawerItemStyle: { display: 'none' }, headerShown: false, swipeEnabled: false }} />
       </Drawer>
     </GestureHandlerRootView>
   );
