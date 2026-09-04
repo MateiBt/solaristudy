@@ -6,13 +6,17 @@ import {
 } from '@expo-google-fonts/bricolage-grotesque';
 import { Feather } from '@expo/vector-icons';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname, useRouter, useSegments } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+// Import Supabase
+import { User } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -20,10 +24,13 @@ SplashScreen.preventAutoHideAsync();
 function CustomDrawerContent(props: any) {
   const router = useRouter();
   const pathname = usePathname();
+  const user = props.user as User | null;
 
-  // Reusable component for navigation rows
+  // Extract real user info or fallback
+  const userEmail = user?.email || 'Guest';
+  const userName = user?.user_metadata?.full_name || userEmail.split('@')[0] || 'User';
+
   const NavItem = ({ icon, label, route, badge }: { icon: string, label: string, route: string, badge?: string }) => {
-    // Check if the current route matches the button to highlight it
     const isActive = pathname === route || (route === '/' && pathname === '/index');
     
     return (
@@ -75,17 +82,20 @@ function CustomDrawerContent(props: any) {
           <NavItem icon="life-buoy" label="Support" route="#" />
           <NavItem icon="settings" label="Settings" route="/settings" />
           
-          {/* User Profile Card */}
+          {/* Dynamic User Profile Card */}
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
               <Feather name="user" size={18} color="#FFFFFF" />
               <View style={styles.onlineDot} />
             </View>
             <View style={styles.profileTextContainer}>
-              <Text style={styles.profileName}>Ana Cheng</Text>
-              <Text style={styles.profileEmail}>ana@solaristudy.com</Text>
+              <Text style={styles.profileName} numberOfLines={1}>{userName}</Text>
+              <Text style={styles.profileEmail} numberOfLines={1}>{userEmail}</Text>
             </View>
-            <Feather name="more-vertical" size={16} color="#A1A1AA" />
+            {/* Added Logout Button */}
+            <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ padding: 4 }}>
+              <Feather name="log-out" size={16} color="#A1A1AA" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -102,24 +112,58 @@ export default function RootLayout() {
     Bricolage_600: BricolageGrotesque_600SemiBold,
   });
 
+  const router = useRouter();
+  const segments = useSegments();
+  const [user, setUser] = useState<User | null>(null);
+  const [authInitialized, setAuthInitialized] = useState(false);
+
+  // Initialize Auth State
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthInitialized(true);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Strict Routing Guard
+  useEffect(() => {
+    if (!authInitialized) return;
+
+    // 'segments[0]' tells us the top-level route name
+    const inAuthGroup = segments[0] === 'login';
+
+    if (!user && !inAuthGroup) {
+      // User is not logged in and trying to access a secure screen -> kick to login
+      router.replace('/login');
+    } else if (user && inAuthGroup) {
+      // User is already logged in but sitting on the login screen -> kick to home
+      router.replace('/');
+    }
+  }, [user, authInitialized, segments]);
+
   useEffect(() => {
     if (loaded || error) {
       SplashScreen.hideAsync();
     }
   }, [loaded, error]);
 
-  if (!loaded && !error) {
-    return null;
-  }
+  if (!loaded && !error) return null;
+  if (!authInitialized) return null; // Prevent UI flickering while checking auth
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Drawer 
-        drawerContent={(props) => <CustomDrawerContent {...props} />}
+        drawerContent={(props) => <CustomDrawerContent {...props} user={user} />}
         screenOptions={{ 
-          headerShown: false, // Hidden to allow the dark sidebar to contrast sharply
+          headerShown: false, 
           drawerStyle: {
-            backgroundColor: '#18181B', // Deep matte dark gray
+            backgroundColor: '#18181B',
             width: 280,
             borderRightWidth: 1,
             borderRightColor: '#27272A',
@@ -132,6 +176,7 @@ export default function RootLayout() {
         <Drawer.Screen name="leaderboards" />
         <Drawer.Screen name="settings" />
         <Drawer.Screen name="chat/[id]" />
+        {/* The login screen should NOT be swipable from the drawer */}
         <Drawer.Screen name="login" options={{ swipeEnabled: false }} />
       </Drawer>
     </GestureHandlerRootView>
@@ -140,116 +185,24 @@ export default function RootLayout() {
 
 // 3. Styles for the Custom Drawer
 const styles = StyleSheet.create({
-  drawerContainer: {
-    flex: 1,
-    backgroundColor: '#18181B',
-  },
-  scrollContent: {
-    flex: 1,
-    paddingTop: 24,
-  },
-  brandHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 32,
-  },
-  brandLogo: {
-    marginRight: 12,
-  },
-  brandText: {
-    fontFamily: 'Bricolage_600',
-    fontSize: 18,
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
-  navSection: {
-    paddingHorizontal: 12,
-    gap: 4,
-  },
-  navItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  navItemActive: {
-    backgroundColor: '#27272A', // Soft gray highlight
-  },
-  navLabel: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 15,
-    color: '#A1A1AA',
-    marginLeft: 12,
-    flex: 1,
-  },
-  navLabelActive: {
-    color: '#FFFFFF',
-    fontFamily: 'Bricolage_600',
-  },
-  badge: {
-    backgroundColor: '#27272A',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  badgeText: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 12,
-    color: '#D4D4D8',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#27272A',
-    marginVertical: 24,
-    marginHorizontal: 20,
-  },
-  footerSection: {
-    paddingHorizontal: 12,
-    paddingBottom: 24,
-    gap: 4,
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#27272A',
-    padding: 12,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#3F3F46',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    position: 'relative',
-  },
-  onlineDot: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#10B981', // Emerald green
-    borderWidth: 2,
-    borderColor: '#27272A',
-  },
-  profileTextContainer: {
-    flex: 1,
-  },
-  profileName: {
-    fontFamily: 'Bricolage_600',
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
-  profileEmail: {
-    fontFamily: 'Bricolage_400',
-    fontSize: 12,
-    color: '#A1A1AA',
-  },
+  drawerContainer: { flex: 1, backgroundColor: '#18181B' },
+  scrollContent: { flex: 1, paddingTop: 24 },
+  brandHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 32 },
+  brandLogo: { marginRight: 12 },
+  brandText: { fontFamily: 'Bricolage_600', fontSize: 18, color: '#FFFFFF', letterSpacing: -0.3 },
+  navSection: { paddingHorizontal: 12, gap: 4 },
+  navItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8 },
+  navItemActive: { backgroundColor: '#27272A' },
+  navLabel: { fontFamily: 'Bricolage_500', fontSize: 15, color: '#A1A1AA', marginLeft: 12, flex: 1 },
+  navLabelActive: { color: '#FFFFFF', fontFamily: 'Bricolage_600' },
+  badge: { backgroundColor: '#27272A', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
+  badgeText: { fontFamily: 'Bricolage_500', fontSize: 12, color: '#D4D4D8' },
+  divider: { height: 1, backgroundColor: '#27272A', marginVertical: 24, marginHorizontal: 20 },
+  footerSection: { paddingHorizontal: 12, paddingBottom: 24, gap: 4 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#27272A', padding: 12, borderRadius: 12, marginTop: 16 },
+  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#3F3F46', justifyContent: 'center', alignItems: 'center', marginRight: 12, position: 'relative' },
+  onlineDot: { position: 'absolute', bottom: -2, right: -2, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#27272A' },
+  profileTextContainer: { flex: 1, paddingRight: 8 },
+  profileName: { fontFamily: 'Bricolage_600', fontSize: 14, color: '#FFFFFF' },
+  profileEmail: { fontFamily: 'Bricolage_400', fontSize: 12, color: '#A1A1AA' },
 });

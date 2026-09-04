@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -14,120 +13,162 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
-export default function Login() {
+export default function LoginScreen() {
+  const router = useRouter();
+  
+  // State
+  const [isLogin, setIsLogin] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  
+  // Form Fields
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
-  // Handle Account Creation
-  async function signUpWithEmail() {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter both an email and password.');
+  async function handleAuth() {
+    if (!email.trim() || !password.trim()) {
+      setErrorMsg('Please fill in all required fields.');
       return;
     }
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email: email,
-      password: password,
-    });
-
-    if (error) {
-      Alert.alert('Sign Up Failed', error.message);
-    } else {
-      Alert.alert('Success!', 'Check your Supabase dashboard to see your new user.');
-    }
-    setLoading(false);
-  }
-
-  // Handle Logging In
-  async function signInWithEmail() {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter both an email and password.');
+    if (!isLogin && !fullName.trim()) {
+      setErrorMsg('Please provide your full name.');
       return;
     }
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
 
-    if (error) {
-      Alert.alert('Login Failed', error.message);
-    } else {
-      // Redirect to home dashboard
-      router.replace('/');
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      if (isLogin) {
+        // --- SIGN IN ---
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        });
+        if (error) throw error;
+        
+        // Once successful, the auth listener in _layout.tsx will automatically redirect to '/'
+      } else {
+        // --- SIGN UP ---
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: password.trim(),
+          options: {
+            data: {
+              full_name: fullName.trim(),
+            },
+          },
+        });
+        if (error) throw error;
+        
+        // If email confirmation is required, session will be null
+        if (data.user && !data.session) {
+          setErrorMsg('');
+          alert('Account created! Please check your email to confirm your account before signing in.');
+          setIsLogin(true); // Switch to the login tab so they can sign in after confirming
+        }
+      }
+    } catch (error: any) {
+      setErrorMsg(error.message || 'An error occurred during authentication.');
+    } finally {
+      setIsLoading(false);
     }
-    setLoading(false);
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={styles.content}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.card}>
         
-        <View style={styles.headerContainer}>
+        {/* Brand Header */}
+        <View style={styles.header}>
           <View style={styles.logoBox}>
-            <Feather name="hexagon" size={32} color="#FFFFFF" />
+            <Feather name="hexagon" size={24} color="#FFFFFF" />
           </View>
-          <Text style={styles.title}>SolariStudy</Text>
-          <Text style={styles.subtitle}>Your personal AI study engine.</Text>
+          <Text style={styles.brandTitle}>SolariStudy</Text>
         </View>
 
-        <View style={styles.formCard}>
-          <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
+        {/* Title */}
+        <Text style={styles.title}>{isLogin ? 'Welcome back' : 'Create an account'}</Text>
+        <Text style={styles.subtitle}>
+          {isLogin 
+            ? 'Sign in to access your study sessions and dashboard.' 
+            : 'Join SolariStudy to start mastering your topics.'}
+        </Text>
+
+        {/* Error Message */}
+        {errorMsg ? (
+          <View style={styles.errorBox}>
+            <Feather name="alert-circle" size={16} color="#EF4444" />
+            <Text style={styles.errorText}>{errorMsg}</Text>
+          </View>
+        ) : null}
+
+        {/* Form */}
+        <View style={styles.form}>
+          {!isLogin && (
+            <View style={styles.inputWrapper}>
+              <Feather name="user" size={18} color="#9CA3AF" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Full Name"
+                placeholderTextColor="#9CA3AF"
+                value={fullName}
+                onChangeText={setFullName}
+                autoCapitalize="words"
+              />
+            </View>
+          )}
+
           <View style={styles.inputWrapper}>
-            <Feather name="mail" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <Feather name="mail" size={18} color="#9CA3AF" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="name@example.com"
+              placeholder="Email address"
               placeholderTextColor="#9CA3AF"
               value={email}
               onChangeText={setEmail}
-              autoCapitalize="none"
               keyboardType="email-address"
+              autoCapitalize="none"
             />
           </View>
 
-          <Text style={styles.inputLabel}>PASSWORD</Text>
           <View style={styles.inputWrapper}>
-            <Feather name="lock" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <Feather name="lock" size={18} color="#9CA3AF" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="••••••••"
+              placeholder="Password"
               placeholderTextColor="#9CA3AF"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
-              autoCapitalize="none"
             />
           </View>
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity 
-              style={[styles.button, styles.primaryButton]} 
-              onPress={signInWithEmail}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Sign In</Text>
-              )}
-            </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.submitButton, isLoading && { opacity: 0.7 }]} 
+            onPress={handleAuth}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitButtonText}>{isLogin ? 'Sign In' : 'Sign Up'}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
-            <TouchableOpacity 
-              style={[styles.button, styles.secondaryButton]} 
-              onPress={signUpWithEmail}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.secondaryButtonText}>Create Account</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Toggle Mode */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            {isLogin ? "Don't have an account? " : "Already have an account? "}
+          </Text>
+          <TouchableOpacity onPress={() => {
+            setIsLogin(!isLogin);
+            setErrorMsg('');
+          }}>
+            <Text style={styles.footerLink}>{isLogin ? 'Sign up' : 'Sign in'}</Text>
+          </TouchableOpacity>
         </View>
 
       </View>
@@ -136,117 +177,126 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F9FAFB' // Matches the dashboard background
+  container: {
+    flex: 1,
+    backgroundColor: '#F4F5F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
-  content: { 
-    flex: 1, 
-    padding: 24, 
-    justifyContent: 'center', 
-    maxWidth: 480, 
-    width: '100%', 
-    alignSelf: 'center' 
-  },
-  headerContainer: { 
-    alignItems: 'center', 
-    marginBottom: 40 
-  },
-  logoBox: { 
-    width: 64, 
-    height: 64, 
-    backgroundColor: '#185B37', // Signature Deep Green
-    borderRadius: 16, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginBottom: 20,
-    shadowColor: '#185B37',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  title: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 32, 
-    color: '#111827', 
-    letterSpacing: -0.5, 
-    marginBottom: 8 
-  },
-  subtitle: { 
-    fontFamily: 'Bricolage_400', 
-    fontSize: 16, 
-    color: '#6B7280' 
-  },
-  formCard: {
+  card: {
     backgroundColor: '#FFFFFF',
-    padding: 32,
+    width: '100%',
+    maxWidth: 400,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    padding: 40,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 24,
-    elevation: 4,
+    elevation: 8,
   },
-  inputLabel: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 12, 
-    color: '#9CA3AF', 
-    letterSpacing: 0.5, 
-    marginBottom: 8, 
-    marginTop: 16 
-  },
-  inputWrapper: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    borderWidth: 1, 
-    borderColor: '#E5E7EB', 
-    borderRadius: 12, 
-    backgroundColor: '#F9FAFB', 
-    paddingHorizontal: 16, 
-    height: 52 
-  },
-  inputIcon: { 
-    marginRight: 12 
-  },
-  input: { 
-    flex: 1, 
-    fontFamily: 'Bricolage_500', 
-    fontSize: 15, 
-    color: '#111827', 
-    height: '100%',
-    outlineStyle: 'solid',
-    outlineColor: 'transparent',
-  },
-  buttonRow: { 
-    marginTop: 32, 
-    gap: 12 
-  },
-  button: { 
-    height: 52, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center',
+  header: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 32,
+    justifyContent: 'center',
   },
-  primaryButton: { 
-    backgroundColor: '#185B37' 
+  logoBox: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#185B37',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
-  primaryButtonText: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 15, 
-    color: '#FFFFFF' 
+  brandTitle: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 22,
+    color: '#111827',
+    letterSpacing: -0.5,
   },
-  secondaryButton: { 
-    backgroundColor: '#FFFFFF', 
-    borderWidth: 1, 
-    borderColor: '#E5E7EB' 
+  title: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 24,
+    color: '#111827',
+    marginBottom: 8,
   },
-  secondaryButtonText: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 15, 
-    color: '#4B5563' 
-  }
+  subtitle: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 15,
+    color: '#6B7280',
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorText: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 14,
+    color: '#EF4444',
+    marginLeft: 8,
+    flex: 1,
+  },
+  form: {
+    gap: 16,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    height: 52,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    fontFamily: 'Bricolage_400',
+    fontSize: 15,
+    color: '#111827',
+    height: '100%',
+    outlineStyle: 'none' as any,
+  },
+  submitButton: {
+    backgroundColor: '#185B37',
+    height: 52,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  submitButtonText: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 32,
+  },
+  footerText: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  footerLink: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 14,
+    color: '#185B37',
+  },
 });
