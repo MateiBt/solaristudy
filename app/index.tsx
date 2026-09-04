@@ -3,9 +3,9 @@ import { DrawerActions } from '@react-navigation/native';
 import { useNavigation, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { getDashboardMetrics, getSessions, getUserProfile } from '../lib/db';
-import { SUBJECT_LIST, SubjectConfig } from '../lib/subjects';
-import { ChatSession } from '../lib/types';
+import { getDashboardMetrics, getSessions, getUserProfile, globalSearch } from '../lib/db';
+import { SUBJECT_LIST, SUBJECT_REGISTRY, SubjectConfig } from '../lib/subjects';
+import { ChatSession, SearchResult } from '../lib/types';
 
 export default function Home() {
   const router = useRouter();
@@ -21,9 +21,36 @@ export default function Home() {
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
   const [pinnedSessions, setPinnedSessions] = useState<ChatSession[]>([]);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchQuery.trim().length > 1) {
+        setIsSearching(true);
+        try {
+          const results = await globalSearch(searchQuery);
+          setSearchResults(results);
+          setShowSearchResults(true);
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchResults([]);
+        setShowSearchResults(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   async function loadDashboardData() {
     try {
@@ -31,19 +58,18 @@ export default function Home() {
       const [fetchedMetrics, profile, allSessions] = await Promise.all([
         getDashboardMetrics(),
         getUserProfile(),
-        getSessions('physics') 
+        getSessions('physics')
       ]);
 
       setMetrics(fetchedMetrics);
       if (profile) setStreak(profile.streak_count);
 
-      
       const active = allSessions.filter(s => !s.is_archived);
       setPinnedSessions(active.filter(s => s.is_favorited).slice(0, 5));
-      setRecentSessions(active.slice(0, 5)); 
+      setRecentSessions(active.slice(0, 5));
       
     } catch (error) {
-      console.error("Error loading dashboard data:", error);
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +80,7 @@ export default function Home() {
       key={session.id} 
       style={styles.sessionCard}
       activeOpacity={0.7}
-      onPress={() => router.push(`/chat/${session.subject_id}?sessionId=${session.id}`)}
+      onPress={() => router.push(`/chat/${session.subject_id}?sessionId=${session.id}` as any)}
     >
       <View style={styles.sessionCardHeader}>
         <View style={[styles.sessionIconBox, isPinned && { backgroundColor: '#FEF3C7' }]}>
@@ -72,7 +98,6 @@ export default function Home() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       
-      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -81,16 +106,60 @@ export default function Home() {
           <Feather name="menu" size={24} color="#111827" />
         </TouchableOpacity>
         
-        <View style={styles.searchContainer}>
-          <Feather name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-          <TextInput 
-            style={styles.searchInput}
-            placeholder="Search sessions, folders, or topics..."
-            placeholderTextColor="#9CA3AF"
-          />
-          {Platform.OS === 'web' && (
-            <View style={styles.shortcutBadge}>
-              <Text style={styles.shortcutText}>⌘F</Text>
+        <View style={styles.searchWrapper}>
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+            <TextInput 
+              style={styles.searchInput}
+              placeholder="Search sessions, folders, or topics..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => {
+                if (searchQuery.trim().length > 1) setShowSearchResults(true);
+              }}
+              onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+            />
+            {Platform.OS === 'web' && (
+              <View style={styles.shortcutBadge}>
+                <Text style={styles.shortcutText}>⌘F</Text>
+              </View>
+            )}
+          </View>
+
+          {showSearchResults && (
+            <View style={styles.searchResultsDropdown}>
+              {isSearching ? (
+                <ActivityIndicator color="#185B37" style={{ padding: 16 }} />
+              ) : searchResults.length === 0 ? (
+                <Text style={styles.noResultsText}>No results found.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+                  {searchResults.map((result) => (
+                    <TouchableOpacity
+                      key={`${result.type}-${result.id}`}
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        setShowSearchResults(false);
+                        setSearchQuery('');
+                        if (result.type === 'session') {
+                          router.push(`/chat/${result.subject_id}?sessionId=${result.id}` as any);
+                        } else {
+                          router.push(`/subject/${result.subject_id}` as any);
+                        }
+                      }}
+                    >
+                      <View style={[styles.searchResultIcon, { backgroundColor: result.type === 'session' ? '#EFF6FF' : '#F3F4F6' }]}>
+                        <Feather name={result.type === 'session' ? 'message-circle' : 'folder'} size={14} color={result.type === 'session' ? '#2563EB' : '#4B5563'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.searchResultTitle} numberOfLines={1}>{result.title}</Text>
+                        <Text style={styles.searchResultSub}>{result.type === 'session' ? 'Session' : 'Folder'} • {SUBJECT_REGISTRY[result.subject_id]?.name || result.subject_id}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           )}
         </View>
@@ -105,7 +174,6 @@ export default function Home() {
         </View>
       </View>
 
-      {}
       <View style={styles.headerContainer}>
         <View>
           <Text style={styles.headerTitle}>Solari Dashboard</Text>
@@ -117,7 +185,6 @@ export default function Home() {
         <ActivityIndicator size="large" color="#185B37" style={{ marginTop: 40 }} />
       ) : (
         <>
-          {}
           <View style={styles.statsRow}>
             <View style={[styles.statCard, styles.statCardPrimary, (isDesktop || isTablet) && styles.statCardDesktop]}>
               <View style={styles.statHeaderRow}>
@@ -164,7 +231,6 @@ export default function Home() {
             </View>
           </View>
 
-          {}
           <View style={styles.decksContainer}>
             <View style={styles.deckSection}>
               <View style={styles.deckHeader}>
@@ -193,7 +259,6 @@ export default function Home() {
             </View>
           </View>
 
-          {}
           <Text style={[styles.deckTitle, { marginBottom: 16, marginTop: 24 }]}>Study Hubs</Text>
           <View style={styles.mainGrid}>
             {SUBJECT_LIST.map((subject: SubjectConfig) => (
@@ -208,8 +273,8 @@ export default function Home() {
                 
                 <View style={styles.subjectActions}>
                   <TouchableOpacity 
-                    style={[styles.subjectBtn, styles.subjectBtnPrimary, { backgroundColor: subject.color }]}
-                    onPress={() => router.push(`/chat/${subject.id}`)}
+                    style={[styles.subjectBtn, { backgroundColor: subject.color }]}
+                    onPress={() => router.push(`/chat/${subject.id}` as any)}
                   >
                     <Feather name="play" size={14} color="#FFFFFF" />
                     <Text style={styles.subjectBtnTextLight}>Start Session</Text>
@@ -217,7 +282,7 @@ export default function Home() {
                   
                   <TouchableOpacity 
                     style={[styles.subjectBtn, styles.subjectBtnSecondary]}
-                    onPress={() => router.push(`/subject/${subject.id}`)}
+                    onPress={() => router.push(`/subject/${subject.id}` as any)}
                   >
                     <Feather name="folder" size={14} color="#4B5563" />
                     <Text style={styles.subjectBtnTextDark}>Explore & Review</Text>
@@ -251,6 +316,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 40,
     gap: 16,
+    zIndex: 50,
   },
   menuButton: {
     padding: 8,
@@ -259,8 +325,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  searchContainer: {
+  searchWrapper: {
     flex: 1,
+    maxWidth: 500,
+    position: 'relative',
+    zIndex: 50,
+  },
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -269,7 +340,56 @@ const styles = StyleSheet.create({
     height: 48,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    maxWidth: 500,
+  },
+  searchResultsDropdown: {
+    position: 'absolute',
+    top: 56,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 8,
+    zIndex: 100,
+    overflow: 'hidden',
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  searchResultIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  searchResultTitle: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 15,
+    color: '#111827',
+  },
+  searchResultSub: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  noResultsText: {
+    padding: 24,
+    fontFamily: 'Bricolage_400',
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
   searchIcon: {
     marginRight: 12,
@@ -279,7 +399,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Bricolage_400',
     fontSize: 15,
     color: '#111827',
-    outlineStyle: 'none' as any, 
+    outlineStyle: 'none' as any,
   },
   shortcutBadge: {
     backgroundColor: '#F3F4F6',
@@ -417,8 +537,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#9CA3AF',
   },
-
-  
   decksContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -442,7 +560,7 @@ const styles = StyleSheet.create({
   },
   deckScroll: {
     gap: 16,
-    paddingBottom: 8, 
+    paddingBottom: 8,
   },
   emptyDeck: {
     backgroundColor: '#FFFFFF',
@@ -501,15 +619,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111827',
     marginBottom: 8,
-    height: 40, 
+    height: 40,
   },
   sessionCardDate: {
     fontFamily: 'Bricolage_400',
     fontSize: 12,
     color: '#9CA3AF',
   },
-
-  
   mainGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -531,10 +647,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   subjectCardTablet: {
-    width: 'calc(50% - 12px)' as any, 
+    width: 'calc(50% - 12px)' as any,
   },
   subjectCardDesktop: {
-    width: 'calc(25% - 18px)' as any, 
+    width: 'calc(25% - 18px)' as any,
   },
   subjectCardContent: {
     padding: 24,
@@ -572,9 +688,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     gap: 8,
-  },
-  subjectBtnPrimary: {
-    
   },
   subjectBtnSecondary: {
     backgroundColor: '#F9FAFB',

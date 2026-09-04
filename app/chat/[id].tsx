@@ -22,13 +22,11 @@ import { createFolder, createSession, deleteSession, getFolders, getSessions, up
 import { supabase } from '../../lib/supabase';
 import { ChatMessage, ChatSession, SessionMode, SolveStage, StudyFolder } from '../../lib/types';
 
-
 const PHYSICS_TOPICS = [
   'Classical Mechanics', 'Quantum Mechanics', 'Electromagnetism', 
   'Statistical Physics', 'Condensed Matter', 'General Relativity', 
   'Optics', 'Quantum Field Theory', 'Other topics'
 ];
-
 
 const MathBubble = ({ content }: { content: string }) => {
   const [height, setHeight] = useState(40);
@@ -46,10 +44,10 @@ const MathBubble = ({ content }: { content: string }) => {
     <html>
     <head>
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-      <script src="https:
-      <link rel="stylesheet" href="https:
-      <script defer src="https:
-      <script defer src="https:
+      <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+      <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+      <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
       <style>
         body { 
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
@@ -116,7 +114,7 @@ const MathBubble = ({ content }: { content: string }) => {
 };
 
 export default function ChatScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, folderId: paramFolderId, sessionId: paramSessionId } = useLocalSearchParams();
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView>(null);
   
@@ -137,13 +135,12 @@ export default function ChatScreen() {
   const [attachment, setAttachment] = useState<{ uri: string, base64: string, mimeType: string } | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null); 
 
-  
   const [activeMode, setActiveMode] = useState<SessionMode>('SolariLearn');
   const [solvePhase, setSolvePhase] = useState<SolveStage>('ingest_problems');
 
-  
   const [focusTimerStatus, setFocusTimerStatus] = useState<'idle' | 'running'>('idle');
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [initialFocusSeconds, setInitialFocusSeconds] = useState<number>(0);
 
   const [showTitleModal, setShowTitleModal] = useState(false);
   const [suggestedTitle, setSuggestedTitle] = useState('');
@@ -156,6 +153,12 @@ export default function ChatScreen() {
   const [sessionToEdit, setSessionToEdit] = useState<ChatSession | null>(null);
 
   useEffect(() => {
+    if (paramFolderId && !currentFolderId) {
+      setCurrentFolderId(paramFolderId.toString());
+    }
+  }, [paramFolderId]);
+
+  useEffect(() => {
     loadSidebarData();
   }, [subjectId, currentFolderId]);
 
@@ -164,14 +167,13 @@ export default function ChatScreen() {
       loadMessages(activeSession.id);
       setActiveMode(activeSession.mode || 'SolariLearn');
       setSolvePhase(activeSession.solve_stage || 'ingest_problems');
-      setSelectedTopic(null); 
+      setSelectedTopic(activeSession.topic || null); 
     } else {
       setMessages([]);
       setSelectedTopic(null);
     }
   }, [activeSession]);
 
-  
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     
@@ -191,19 +193,27 @@ export default function ChatScreen() {
   async function loadSidebarData() {
     try {
       setIsLoadingSidebar(true);
+      const targetFolderId = currentFolderId || (paramFolderId ? paramFolderId.toString() : null);
+      
       const [fetchedFolders, fetchedSessions] = await Promise.all([
-        getFolders(subjectId, currentFolderId),
-        getSessions(subjectId, currentFolderId)
+        getFolders(subjectId, targetFolderId),
+        getSessions(subjectId, targetFolderId)
       ]);
+      
       setFolders(fetchedFolders);
       setSessions(fetchedSessions);
       
-      if (!activeSession && currentFolderId === null && fetchedSessions.length > 0) {
+      if (paramSessionId && !activeSession) {
+        const targetSession = fetchedSessions.find(s => s.id === paramSessionId.toString());
+        if (targetSession) {
+          setActiveSession(targetSession);
+        }
+      } else if (!activeSession && targetFolderId === null && fetchedSessions.length > 0 && !paramSessionId) {
           const unarchived = fetchedSessions.filter(s => !s.is_archived);
           if (unarchived.length > 0) setActiveSession(unarchived[0]);
       }
     } catch (error) {
-      console.error("Error loading sidebar data:", error);
+      console.error(error);
     } finally {
       setIsLoadingSidebar(false);
     }
@@ -226,7 +236,7 @@ export default function ChatScreen() {
         return [...fetchedMsgs, ...tempMsgs];
       });
     } catch (error) {
-      console.error("Error loading messages:", error);
+      console.error(error);
     }
   }
 
@@ -238,7 +248,7 @@ export default function ChatScreen() {
       setShowFolderModal(false);
       setNewFolderName('');
     } catch (error) {
-      console.error("Error creating folder:", error);
+      console.error(error);
     }
   }
 
@@ -279,25 +289,32 @@ export default function ChatScreen() {
         });
       }
     } catch (error) {
-      console.error("Error picking image:", error);
+      console.error(error);
     }
   }
 
-  
   async function handleStartFocus(minutes: number) {
-    setTimeRemaining(minutes * 60);
+    const totalSeconds = minutes * 60;
+    setInitialFocusSeconds(totalSeconds);
+    setTimeRemaining(totalSeconds);
     setFocusTimerStatus('running');
     if (activeSession) {
-       await updateSolveStage(activeSession.id, 'focus_timer', { startedAt: new Date().toISOString(), duration: minutes * 60 });
+       await updateSolveStage(activeSession.id, 'focus_timer', { startedAt: new Date().toISOString(), duration: totalSeconds });
     }
   }
 
   async function handleFinishFocus() {
+    const actualSecondsSpent = Math.max(0, initialFocusSeconds - timeRemaining);
     setFocusTimerStatus('idle');
     setSolvePhase('grading_and_review');
     
     if (activeSession) {
-       await updateSolveStage(activeSession.id, 'grading_and_review', { completedAt: new Date().toISOString() });
+       const newTotalActualSeconds = (activeSession.actual_focus_seconds || 0) + actualSecondsSpent;
+       
+       await updateSolveStage(activeSession.id, 'grading_and_review', { 
+         completedAt: new Date().toISOString(),
+         actualFocusSeconds: newTotalActualSeconds
+       });
        
        const contentMsg = "Focus session complete! 🎯 Submit your answers or workings whenever you're ready for grading.";
        
@@ -311,9 +328,9 @@ export default function ChatScreen() {
          status: 'completed',
          ocr_content: null,
          media_url: null,
-         score_earned: null,         
-         score_possible: null,       
-         include_in_accuracy: false, 
+         score_earned: null,
+         score_possible: null,
+         include_in_accuracy: false,
          created_at: new Date().toISOString()
        }]);
 
@@ -345,7 +362,14 @@ export default function ChatScreen() {
       let sessionToUse = activeSession;
       
       if (!sessionToUse) {
-        sessionToUse = await createSession(subjectId, currentFolderId, activeMode, 'gemini-3.5-flash-lite');
+        sessionToUse = await createSession(
+          subjectId, 
+          currentFolderId, 
+          activeMode, 
+          'gemini-3.5-flash-lite', 
+          undefined, 
+          selectedTopic && selectedTopic !== 'Other topics' ? selectedTopic : null
+        );
         setSessions(prev => [sessionToUse!, ...prev]);
         setActiveSession(sessionToUse);
       }
@@ -363,16 +387,16 @@ export default function ChatScreen() {
       const tempUserMsgId = 'temp-user-' + Date.now();
       setMessages(prev => [...prev, {
         id: tempUserMsgId,
-        session_id: sessionToUse!.id,
-        user_id: sessionToUse!.user_id,
+        session_id: sessionToUse.id,
+        user_id: sessionToUse.user_id,
         sender: 'user',
         content: displayContent,
         status: 'completed',
         ocr_content: null,
         media_url: null,
-        score_earned: null,         
-        score_possible: null,       
-        include_in_accuracy: true,  
+        score_earned: null,
+        score_possible: null,
+        include_in_accuracy: true,
         created_at: new Date().toISOString()
       }]);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
@@ -399,16 +423,16 @@ export default function ChatScreen() {
       const tempAiMsgId = 'temp-ai-' + Date.now();
       setMessages(prev => [...prev, {
         id: tempAiMsgId,
-        session_id: sessionToUse!.id,
-        user_id: sessionToUse!.user_id,
+        session_id: sessionToUse.id,
+        user_id: sessionToUse.user_id,
         sender: 'ai',
         content: '',
         status: 'streaming',
         ocr_content: null,
         media_url: null,
-        score_earned: null,         
-        score_possible: null,       
-        include_in_accuracy: true,  
+        score_earned: null,
+        score_possible: null,
+        include_in_accuracy: true,
         created_at: new Date().toISOString()
       }]);
 
@@ -421,7 +445,6 @@ export default function ChatScreen() {
         setMessages(prev => prev.map(m => m.id === tempAiMsgId ? { ...m, content: streamedText } : m));
       });
 
-      
       if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems') {
         setSolvePhase('focus_timer');
         await updateSolveStage(sessionToUse.id, 'focus_timer');
@@ -445,7 +468,7 @@ export default function ChatScreen() {
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error(error);
     } finally {
       setIsSending(false);
     }
@@ -461,7 +484,7 @@ export default function ChatScreen() {
       setSessions(prev => prev.map(s => s.id === activeSession.id ? updatedSession : s));
       setShowTitleModal(false);
     } catch (error) {
-      console.error("Failed to update title:", error);
+      console.error(error);
     }
   }
 
@@ -493,7 +516,7 @@ export default function ChatScreen() {
         setSolvePhase('ingest_problems');
       }
     } catch (error) {
-      console.error("Error clearing chat:", error);
+      console.error(error);
     } finally {
       setShowOptionsModal(false);
     }
@@ -509,7 +532,7 @@ export default function ChatScreen() {
         setActiveSession({ ...activeSession, is_favorited: newStatus });
       }
     } catch (error) {
-      console.error("Error toggling favorite:", error);
+      console.error(error);
     } finally {
       setShowOptionsModal(false);
     }
@@ -522,7 +545,7 @@ export default function ChatScreen() {
       setSessions(prev => prev.map(s => s.id === sessionToEdit.id ? { ...s, is_archived: true } : s));
       if (activeSession?.id === sessionToEdit.id) setActiveSession(null);
     } catch (error) {
-      console.error("Error archiving session:", error);
+      console.error(error);
     } finally {
       setShowOptionsModal(false);
     }
@@ -535,7 +558,7 @@ export default function ChatScreen() {
       setSessions(prev => prev.filter(s => s.id !== sessionToEdit.id));
       if (activeSession?.id === sessionToEdit.id) setActiveSession(null);
     } catch (error) {
-      console.error("Error deleting session:", error);
+      console.error(error);
     } finally {
       setShowOptionsModal(false);
     }
@@ -805,7 +828,7 @@ export default function ChatScreen() {
             <TouchableOpacity style={styles.backToRootBtn} onPress={handleNavigateBack}>
               <Feather name="chevron-left" size={18} color="#111827" />
               <Text style={styles.backToRootText} numberOfLines={1}>
-                {folderStack[folderStack.length - 1].name}
+                {folderStack.length > 0 ? folderStack[folderStack.length - 1].name : subjectName}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -1069,7 +1092,6 @@ const styles = StyleSheet.create({
   modeCardTitleActive: { color: '#185B37' },
   modeCardSub: { fontFamily: 'Bricolage_400', fontSize: 13, color: '#6B7280', lineHeight: 20 },
 
-  
   focusEngineContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F5F7', padding: 24 },
   focusTitle: { fontFamily: 'Bricolage_600', fontSize: 28, color: '#111827', marginBottom: 12 },
   focusSubtitle: { fontFamily: 'Bricolage_400', fontSize: 16, color: '#6B7280', marginBottom: 32, textAlign: 'center' },

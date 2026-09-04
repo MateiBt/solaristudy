@@ -1,10 +1,5 @@
-
 import { supabase } from './supabase';
-import { ChatSession, MessageStatus, SessionMode, SolveStage, StudyFolder, UserProfile } from './types';
-
-
-
-
+import { ChatSession, MessageStatus, SearchResult, SessionFilters, SessionMode, SolveStage, StudyFolder, UserProfile } from './types';
 
 export async function getUserProfile(): Promise<UserProfile | null> {
   const { data: user } = await supabase.auth.getUser();
@@ -16,10 +11,9 @@ export async function getUserProfile(): Promise<UserProfile | null> {
     .eq('id', user.user.id)
     .single();
 
-  if (error && error.code !== 'PGRST116') throw error; 
+  if (error && error.code !== 'PGRST116') throw error;
   
   if (!data) {
-    
     const { data: newProfile, error: insertError } = await supabase
       .from('user_profiles')
       .insert([{ id: user.user.id }])
@@ -40,7 +34,7 @@ export async function logDailyActivity() {
   const today = new Date().toISOString().split('T')[0];
   const lastActive = profile.last_active_date;
 
-  if (lastActive === today) return; 
+  if (lastActive === today) return;
 
   let newStreak = profile.streak_count;
   
@@ -50,15 +44,13 @@ export async function logDailyActivity() {
     const yesterdayStr = yesterday.toISOString().split('T')[0];
 
     if (lastActive === yesterdayStr) {
-      newStreak += 1; 
+      newStreak += 1;
     } else {
-      newStreak = 1; 
+      newStreak = 1;
     }
   } else {
-    newStreak = 1; 
+    newStreak = 1;
   }
-
-  
 
   const { error } = await supabase
     .from('user_profiles')
@@ -68,15 +60,10 @@ export async function logDailyActivity() {
   if (error) throw error;
 }
 
-
-
-
-
 export async function getDashboardMetrics() {
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error("Not authenticated");
 
-  
   const { data: sessions, error: sessionsError } = await supabase
     .from('chat_sessions')
     .select('actual_focus_seconds, problem_count, mode')
@@ -93,7 +80,6 @@ export async function getDashboardMetrics() {
     totalProblems += (s.problem_count || 0);
   });
 
-  
   const { data: messages, error: messagesError } = await supabase
     .from('chat_messages')
     .select('score_earned, score_possible')
@@ -129,10 +115,6 @@ export async function toggleMessageAccuracy(messageId: string, include: boolean)
 
   if (error) throw error;
 }
-
-
-
-
 
 export async function getFolders(subjectId: string, parentId: string | null = null): Promise<StudyFolder[]> {
   const { data: user } = await supabase.auth.getUser();
@@ -172,9 +154,14 @@ export async function createFolder(subjectId: string, name: string, parentId: st
   return data;
 }
 
+export async function deleteFolder(folderId: string) {
+  const { error } = await supabase
+    .from('study_folders')
+    .delete()
+    .eq('id', folderId);
 
-
-
+  if (error) throw error;
+}
 
 export async function getSessions(subjectId: string, folderId: string | null = null): Promise<ChatSession[]> {
   const { data: user } = await supabase.auth.getUser();
@@ -198,12 +185,55 @@ export async function getSessions(subjectId: string, folderId: string | null = n
   return data || [];
 }
 
+export async function getScopedSubjectSessions(
+  subjectId: string, 
+  folderId: string | null, 
+  filters: SessionFilters
+): Promise<ChatSession[]> {
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) throw new Error("Not authenticated");
+
+  let query = supabase
+    .from('chat_sessions')
+    .select('*')
+    .eq('user_id', user.user.id)
+    .eq('subject_id', subjectId)
+    .order('updated_at', { ascending: false });
+
+  if (folderId) {
+    query = query.eq('folder_id', folderId);
+  } else {
+    query = query.is('folder_id', null);
+  }
+
+  if (filters.mode && filters.mode !== 'All') {
+    query = query.eq('mode', filters.mode);
+  }
+
+  if (filters.status === 'Favorited') {
+    query = query.eq('is_favorited', true).eq('is_archived', false);
+  } else if (filters.status === 'Archived') {
+    query = query.eq('is_archived', true);
+  } else {
+    query = query.eq('is_archived', false);
+  }
+
+  if (filters.topic && filters.topic !== 'All') {
+    query = query.eq('topic', filters.topic);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
 export async function createSession(
   subjectId: string, 
   folderId: string | null = null, 
   mode: SessionMode = 'SolariLearn',
   modelId: string = 'gemini-3.5-flash-lite',
-  customTitle?: string
+  customTitle?: string,
+  topic?: string | null
 ) {
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error("Not authenticated");
@@ -221,7 +251,8 @@ export async function createSession(
         title,
         title_confirmed,
         mode,
-        model_id: modelId
+        model_id: modelId,
+        topic: topic || null
       }
     ])
     .select()
@@ -249,10 +280,6 @@ export async function deleteSession(sessionId: string) {
   if (error) throw error;
 }
 
-
-
-
-
 export async function updateSolveStage(
   sessionId: string, 
   stage: SolveStage, 
@@ -263,7 +290,6 @@ export async function updateSolveStage(
   if (timerMetadata?.duration !== undefined) updates.focus_duration_seconds = timerMetadata.duration;
   if (timerMetadata?.startedAt !== undefined) updates.focus_started_at = timerMetadata.startedAt;
   if (timerMetadata?.completedAt !== undefined) updates.focus_completed_at = timerMetadata.completedAt;
-  
   
   if (timerMetadata?.actualFocusSeconds !== undefined) {
       updates.actual_focus_seconds = timerMetadata.actualFocusSeconds;
@@ -309,4 +335,117 @@ export async function getFolderContext(folderId: string, excludeSessionId: strin
     const summary = messages.slice(0, 4).map((m: any) => `${m.sender}: ${m.content}`).join('\n');
     return `[Past Folder Session: ${s.title}]\n${summary}`;
   }).join('\n\n');
+}
+
+export async function globalSearch(searchQuery: string): Promise<SearchResult[]> {
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) throw new Error("Not authenticated");
+
+  if (!searchQuery || searchQuery.trim() === '') return [];
+
+  const term = `%${searchQuery.trim()}%`;
+
+  const { data: sessions, error: sessionError } = await supabase
+    .from('chat_sessions')
+    .select('id, title, subject_id, folder_id')
+    .eq('user_id', user.user.id)
+    .ilike('title', term)
+    .limit(5);
+
+  if (sessionError) throw sessionError;
+
+  const { data: folders, error: folderError } = await supabase
+    .from('study_folders')
+    .select('id, name, subject_id')
+    .eq('user_id', user.user.id)
+    .ilike('name', term)
+    .limit(5);
+
+  if (folderError) throw folderError;
+
+  const results: SearchResult[] = [];
+
+  folders?.forEach(f => {
+    results.push({
+      id: f.id,
+      type: 'folder',
+      title: f.name,
+      subject_id: f.subject_id
+    });
+  });
+
+  sessions?.forEach(s => {
+    results.push({
+      id: s.id,
+      type: 'session',
+      title: s.title,
+      subject_id: s.subject_id,
+      folder_id: s.folder_id
+    });
+  });
+
+  return results;
+}
+
+export async function getSubjectHubMetrics() {
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) throw new Error("Not authenticated");
+
+  const [foldersRes, sessionsRes, messagesRes] = await Promise.all([
+    supabase.from('study_folders').select('subject_id').eq('user_id', user.user.id),
+    supabase.from('chat_sessions').select('id, subject_id, actual_focus_seconds').eq('user_id', user.user.id).eq('is_archived', false),
+    supabase.from('chat_messages').select('session_id, score_earned, score_possible').eq('user_id', user.user.id).eq('include_in_accuracy', true).not('score_earned', 'is', null).not('score_possible', 'is', null)
+  ]);
+
+  if (foldersRes.error) throw foldersRes.error;
+  if (sessionsRes.error) throw sessionsRes.error;
+  if (messagesRes.error) throw messagesRes.error;
+
+  const metrics: Record<string, { hours: string; chats: number; folders: number; score: string | null }> = {};
+  let totalGlobalSeconds = 0;
+
+  const sessionSubjectMap = new Map<string, string>();
+
+  sessionsRes.data.forEach(s => {
+    const sub = s.subject_id;
+    sessionSubjectMap.set(s.id, sub);
+    if (!metrics[sub]) metrics[sub] = { hours: '0.0h', chats: 0, folders: 0, score: null };
+    
+    metrics[sub].chats += 1;
+    
+    const secs = s.actual_focus_seconds || 0;
+    totalGlobalSeconds += secs;
+    
+    const currentHours = parseFloat(metrics[sub].hours.replace('h', ''));
+    metrics[sub].hours = (currentHours + (secs / 3600)).toFixed(1) + 'h';
+  });
+
+  foldersRes.data.forEach(f => {
+    const sub = f.subject_id;
+    if (!metrics[sub]) metrics[sub] = { hours: '0.0h', chats: 0, folders: 0, score: null };
+    metrics[sub].folders += 1;
+  });
+
+  const scores: Record<string, { earned: number; possible: number }> = {};
+  
+  messagesRes.data.forEach(m => {
+    const sub = sessionSubjectMap.get(m.session_id);
+    if (sub) {
+      if (!scores[sub]) scores[sub] = { earned: 0, possible: 0 };
+      scores[sub].earned += (m.score_earned || 0);
+      scores[sub].possible += (m.score_possible || 0);
+    }
+  });
+
+  Object.keys(scores).forEach(sub => {
+    if (scores[sub].possible > 0) {
+      if (!metrics[sub]) metrics[sub] = { hours: '0.0h', chats: 0, folders: 0, score: null };
+      metrics[sub].score = Math.round((scores[sub].earned / scores[sub].possible) * 100) + '%';
+    }
+  });
+
+  return {
+    subjectMetrics: metrics,
+    totalGlobalHours: (totalGlobalSeconds / 3600).toFixed(1) + 'h'
+  };
 }

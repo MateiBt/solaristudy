@@ -1,4 +1,3 @@
-
 import { supabase } from './supabase';
 
 export type SolariMode = 'SolariLearn' | 'SolariSolve';
@@ -12,8 +11,7 @@ export interface AIRequestOptions {
   folderContext?: string;
 }
 
-
-const EDGE_FUNCTION_URL = 'https:
+const EDGE_FUNCTION_URL = 'https://wyivhhhhosokazyrovti.supabase.co/functions/v1/chat-completion';
 
 export async function generateAIResponse(
   prompt: string,
@@ -22,26 +20,23 @@ export async function generateAIResponse(
 ): Promise<string> {
   const { mode, model_id = 'gemini-3.5-flash-lite', conversationHistory = [], folderContext = '' } = options;
 
-  
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error || !session?.access_token) {
     throw new Error('You must be authenticated to interact with the AI.');
   }
 
-  
   const payload = {
     prompt,
     history: conversationHistory,
     mode,
     model_id,
+    solve_phase: options.solvePhase,
     folder_context: folderContext,
   };
 
-  
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', EDGE_FUNCTION_URL, true);
-    
     
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);

@@ -1,99 +1,109 @@
 import { Feather } from '@expo/vector-icons';
 import { DrawerActions } from '@react-navigation/native';
-import { useNavigation, useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { getSubjectHubMetrics, globalSearch } from '../lib/db';
+import { SUBJECT_LIST, SUBJECT_REGISTRY } from '../lib/subjects';
+import { SearchResult } from '../lib/types';
+
+const SUBJECT_DETAILS: Record<string, { intro: string; bullets: string[] }> = {
+  mathematics: {
+    intro: "Let's get past just finding the right answer. When you study Math with SolariStudy, we want to make sure your reasoning is rock solid from start to finish.",
+    bullets: [
+      "Tearing down proofs: We read through your proofs line by line.",
+      "Checking for completeness: We'll tell you if your solution is fully baked.",
+      "Spotting the gaps: Catching logic jumps and finding what's missing.",
+      "Unstucking the hard stuff: Breaking complex calculus into human steps."
+    ]
+  },
+  physics: {
+    intro: "Physics isn't just about plugging numbers into a formula; it's about understanding how the universe actually moves.",
+    bullets: [
+      "Setting up the problem: Figuring out which physical laws apply first.",
+      "Derivation breakdowns: Walking you through brutal formula derivations.",
+      "Visualizing the invisible: Mapping magnetic fields and thermodynamic cycles.",
+      "Sanity-checking your answers: Finding the dropped negative signs."
+    ]
+  },
+  astronomy: {
+    intro: "Space is overwhelmingly big, and the math used to describe it can be just as intimidating. We bring the cosmos down to earth:",
+    bullets: [
+      "Decoding orbital mechanics: Breaking down trajectories and planetary motion.",
+      "Making sense of scale: Conceptualizing massive distances and energy outputs.",
+      "Connecting physics to the stars: Applying Earth physics to black holes.",
+      "Analyzing the data: Interpreting light curves to spectroscopic shifts."
+    ]
+  },
+  linguistics: {
+    intro: "Language is messy, but there is a deep structure underneath it all. We help you tear it apart and see how the gears turn:",
+    bullets: [
+      "Drawing the trees: Building complex syntax trees without getting lost.",
+      "Finding the patterns: Spotting hidden rules in phonology and morphology.",
+      "Tracking the evolution: Breaking down how languages evolve over time.",
+      "Testing your hypotheses: Sanity-checking theories about grammar rules."
+    ]
+  }
+};
 
 export default function StudyEngine() {
   const router = useRouter();
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
-  
-  
   const isLargeScreen = width > 900;
 
-  const subjects = [
-    { 
-      id: 'math', 
-      name: 'Mathematics', 
-      icon: 'pie-chart',
-      color: '#FF4D4D',
-      bgColor: '#FFE8E8',
-      stats: { hours: '14.5h', chats: 8, folders: 3, score: '92%' },
-      intro: "Let's get past just finding the right answer. When you study Math with SolariStudy, we want to make sure your reasoning is rock solid from start to finish.",
-      bullets: [
-        "Tearing down proofs: We read through your proofs line by line.",
-        "Checking for completeness: We'll tell you if your solution is fully baked.",
-        "Spotting the gaps: Catching logic jumps and finding what's missing.",
-        "Unstucking the hard stuff: Breaking complex calculus into human steps."
-      ]
-    },
-    { 
-      id: 'physics', 
-      name: 'Physics', 
-      icon: 'aperture',
-      color: '#9B51E0',
-      bgColor: '#F0E6FF',
-      stats: { hours: '9.2h', chats: 5, folders: 2, score: '88%' },
-      intro: "Physics isn't just about plugging numbers into a formula; it's about understanding how the universe actually moves.",
-      bullets: [
-        "Setting up the problem: Figuring out which physical laws apply first.",
-        "Derivation breakdowns: Walking you through brutal formula derivations.",
-        "Visualizing the invisible: Mapping magnetic fields and thermodynamic cycles.",
-        "Sanity-checking your answers: Finding the dropped negative signs."
-      ]
-    },
-    { 
-      id: 'astronomy', 
-      name: 'Astronomy', 
-      icon: 'moon',
-      color: '#2D9CDB',
-      bgColor: '#E6F4FE',
-      stats: { hours: '4.1h', chats: 3, folders: 1, score: null },
-      intro: "Space is overwhelmingly big, and the math used to describe it can be just as intimidating. We bring the cosmos down to earth:",
-      bullets: [
-        "Decoding orbital mechanics: Breaking down trajectories and planetary motion.",
-        "Making sense of scale: Conceptualizing massive distances and energy outputs.",
-        "Connecting physics to the stars: Applying Earth physics to black holes.",
-        "Analyzing the data: Interpreting light curves to spectroscopic shifts."
-      ]
-    },
-    { 
-      id: 'linguistics', 
-      name: 'Linguistics', 
-      icon: 'message-circle',
-      color: '#F2994A',
-      bgColor: '#FFF3E0',
-      stats: { hours: '6.8h', chats: 6, folders: 4, score: null },
-      intro: "Language is messy, but there is a deep structure underneath it all. We help you tear it apart and see how the gears turn:",
-      bullets: [
-        "Drawing the trees: Building complex syntax trees without getting lost.",
-        "Finding the patterns: Spotting hidden rules in phonology and morphology.",
-        "Tracking the evolution: Breaking down how languages evolve over time.",
-        "Testing your hypotheses: Sanity-checking theories about grammar rules."
-      ]
-    },
-    { 
-      id: 'general', 
-      name: 'General Tutor', 
-      icon: 'cpu',
-      color: '#27AE60',
-      bgColor: '#E8F5E9',
-      stats: { hours: '12.0h', chats: 15, folders: 5, score: null },
-      intro: "Got a syllabus that doesn't fit into a neat box? We adapt to whatever you throw at us:",
-      bullets: [
-        "Decoding your syllabus: Upload outlines to see what you actually need.",
-        "Building a roadmap: Chopping massive topics into a step-by-step plan.",
-        "Connecting the dots: Seeing how different concepts relate to each other.",
-        "Custom practice: Generating highly specific practice scenarios."
-      ]
-    },
-  ];
+  const [isLoading, setIsLoading] = useState(true);
+  const [metrics, setMetrics] = useState<Record<string, any>>({});
+  const [totalHours, setTotalHours] = useState('0.0h');
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadMetrics();
+    }, [])
+  );
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchQuery.trim().length > 1) {
+        setIsSearching(true);
+        try {
+          const results = await globalSearch(searchQuery);
+          setSearchResults(results);
+          setShowSearchResults(true);
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchResults([]);
+        setShowSearchResults(false);
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  async function loadMetrics() {
+    try {
+      setIsLoading(true);
+      const { subjectMetrics, totalGlobalHours } = await getSubjectHubMetrics();
+      setMetrics(subjectMetrics);
+      setTotalHours(totalGlobalHours);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       
-      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -102,16 +112,62 @@ export default function StudyEngine() {
           <Feather name="menu" size={24} color="#111827" />
         </TouchableOpacity>
         
-        <View style={styles.searchContainer}>
-          <Feather name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-          <TextInput 
-            style={styles.searchInput}
-            placeholder="Search subjects..."
-            placeholderTextColor="#9CA3AF"
-          />
-          <View style={styles.shortcutBadge}>
-            <Text style={styles.shortcutText}>⌘F</Text>
+        <View style={styles.searchWrapper}>
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+            <TextInput 
+              style={styles.searchInput}
+              placeholder="Search subjects, sessions..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => {
+                if (searchQuery.trim().length > 1) setShowSearchResults(true);
+              }}
+              onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+            />
+            {Platform.OS === 'web' && (
+              <View style={styles.shortcutBadge}>
+                <Text style={styles.shortcutText}>⌘F</Text>
+              </View>
+            )}
           </View>
+
+          {showSearchResults && (
+            <View style={styles.searchResultsDropdown}>
+              {isSearching ? (
+                <ActivityIndicator color="#185B37" style={{ padding: 16 }} />
+              ) : searchResults.length === 0 ? (
+                <Text style={styles.noResultsText}>No results found.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+                  {searchResults.map((result) => (
+                    <TouchableOpacity
+                      key={`${result.type}-${result.id}`}
+                      style={styles.searchResultItem}
+                      onPress={() => {
+                        setShowSearchResults(false);
+                        setSearchQuery('');
+                        if (result.type === 'session') {
+                          router.push(`/chat/${result.subject_id}?sessionId=${result.id}` as any);
+                        } else {
+                          router.push(`/subject/${result.subject_id}` as any);
+                        }
+                      }}
+                    >
+                      <View style={[styles.searchResultIcon, { backgroundColor: result.type === 'session' ? '#EFF6FF' : '#F3F4F6' }]}>
+                        <Feather name={result.type === 'session' ? 'message-circle' : 'folder'} size={14} color={result.type === 'session' ? '#2563EB' : '#4B5563'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.searchResultTitle} numberOfLines={1}>{result.title}</Text>
+                        <Text style={styles.searchResultSub}>{result.type === 'session' ? 'Session' : 'Folder'} • {SUBJECT_REGISTRY[result.subject_id]?.name || result.subject_id}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          )}
         </View>
 
         <View style={styles.navRight}>
@@ -124,82 +180,93 @@ export default function StudyEngine() {
         </View>
       </View>
       
-      {}
       <View style={styles.headerContainer}>
         <View>
           <Text style={styles.header}>Study Dashboard</Text>
           <Text style={styles.subtitle}>Your active learning environments</Text>
         </View>
         <View style={styles.pillBadge}>
-          <Text style={styles.pillText}>Total Study Time: 46.6h</Text>
+          <Text style={styles.pillText}>Total Study Time: {totalHours}</Text>
         </View>
       </View>
       
-      {}
-      <View style={[styles.gridContainer, isLargeScreen && styles.gridContainerWide]}>
-        {subjects.map((subject) => (
-          <View key={subject.id} style={[styles.card, isLargeScreen && styles.cardWide]}>
+      {isLoading ? (
+        <ActivityIndicator size="large" color="#111827" style={{ marginTop: 40 }} />
+      ) : (
+        <View style={[styles.gridContainer, isLargeScreen && styles.gridContainerWide]}>
+          {SUBJECT_LIST.map((subject) => {
+            const stats = metrics[subject.id] || { hours: '0.0h', chats: 0, folders: 0, score: null };
+            const details = SUBJECT_DETAILS[subject.id] || { intro: subject.description, bullets: [] };
             
-            {}
-            <View style={styles.cardHeader}>
-              <View style={[styles.iconBox, { backgroundColor: subject.bgColor }]}>
-                <Feather name={subject.icon as any} size={24} color={subject.color} />
-              </View>
-              <Text style={styles.cardTitle}>{subject.name}</Text>
-            </View>
-
-            {}
-            <View style={styles.statsContainer}>
-              <View style={styles.statBox}>
-                <Feather name="clock" size={14} color="#6B7280" />
-                <Text style={styles.statText}>{subject.stats.hours}</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Feather name="message-square" size={14} color="#6B7280" />
-                <Text style={styles.statText}>{subject.stats.chats} Chats</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Feather name="folder" size={14} color="#6B7280" />
-                <Text style={styles.statText}>{subject.stats.folders} Folders</Text>
-              </View>
-              {subject.stats.score && (
-                <View style={[styles.statBox, { backgroundColor: subject.bgColor, borderColor: subject.bgColor }]}>
-                  <Feather name="target" size={14} color={subject.color} />
-                  <Text style={[styles.statText, { color: subject.color, fontFamily: 'Bricolage_600' }]}>
-                    Avg: {subject.stats.score}
-                  </Text>
+            return (
+              <View key={subject.id} style={[styles.card, isLargeScreen && styles.cardWide]}>
+                
+                <View style={styles.cardHeader}>
+                  <View style={[styles.iconBox, { backgroundColor: subject.bgColor }]}>
+                    <Feather name={subject.icon as any} size={24} color={subject.color} />
+                  </View>
+                  <Text style={styles.cardTitle}>{subject.name}</Text>
                 </View>
-              )}
-            </View>
 
-            <View style={styles.divider} />
-
-            {}
-            <Text style={styles.introText}>{subject.intro}</Text>
-            <View style={styles.bulletsContainer}>
-              {subject.bullets.map((bullet, index) => (
-                <View key={index} style={styles.bulletRow}>
-                  <Text style={[styles.bulletDot, { color: subject.color }]}>•</Text>
-                  <Text style={styles.bulletText}>{bullet}</Text>
+                <View style={styles.statsContainer}>
+                  <View style={styles.statBox}>
+                    <Feather name="clock" size={14} color="#6B7280" />
+                    <Text style={styles.statText}>{stats.hours}</Text>
+                  </View>
+                  <View style={styles.statBox}>
+                    <Feather name="message-square" size={14} color="#6B7280" />
+                    <Text style={styles.statText}>{stats.chats} Chats</Text>
+                  </View>
+                  <View style={styles.statBox}>
+                    <Feather name="folder" size={14} color="#6B7280" />
+                    <Text style={styles.statText}>{stats.folders} Folders</Text>
+                  </View>
+                  {stats.score && (
+                    <View style={[styles.statBox, { backgroundColor: subject.bgColor, borderColor: subject.bgColor }]}>
+                      <Feather name="target" size={14} color={subject.color} />
+                      <Text style={[styles.statText, { color: subject.color, fontFamily: 'Bricolage_600' }]}>
+                        Avg: {stats.score}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              ))}
-            </View>
 
-            {}
-            <View style={styles.cardFooter}>
-              <TouchableOpacity 
-                style={[styles.actionButton, { backgroundColor: subject.color }]}
-                onPress={() => router.push({ pathname: '/chat/[id]', params: { id: subject.id } })}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.actionButtonText}>Launch Engine</Text>
-                <Feather name="arrow-right" size={18} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            
-          </View>
-        ))}
-      </View>
+                <View style={styles.divider} />
+
+                <Text style={styles.introText}>{details.intro}</Text>
+                <View style={styles.bulletsContainer}>
+                  {details.bullets.map((bullet: string, index: number) => (
+                    <View key={index} style={styles.bulletRow}>
+                      <Text style={[styles.bulletDot, { color: subject.color }]}>•</Text>
+                      <Text style={styles.bulletText}>{bullet}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.cardFooter}>
+                  <TouchableOpacity 
+                    style={[styles.actionButton, { backgroundColor: subject.color }]}
+                    onPress={() => router.push(`/chat/${subject.id}` as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.actionButtonText}>Launch Engine</Text>
+                    <Feather name="arrow-right" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.secondaryActionButton}
+                    onPress={() => router.push(`/subject/${subject.id}` as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="folder" size={18} color="#4B5563" />
+                    <Text style={styles.secondaryActionButtonText}>Explore & Review</Text>
+                  </TouchableOpacity>
+                </View>
+                
+              </View>
+            );
+          })}
+        </View>
+      )}
 
     </ScrollView>
   );
@@ -224,6 +291,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 40,
     gap: 16,
+    zIndex: 50,
   },
   menuButton: {
     padding: 8,
@@ -232,8 +300,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  searchContainer: {
+  searchWrapper: {
     flex: 1,
+    maxWidth: 500,
+    position: 'relative',
+    zIndex: 50,
+  },
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -242,7 +315,6 @@ const styles = StyleSheet.create({
     height: 48,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    maxWidth: 500,
   },
   searchIcon: {
     marginRight: 12,
@@ -252,8 +324,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Bricolage_400',
     fontSize: 15,
     color: '#111827',
-    outlineStyle: 'solid',
-    outlineColor: 'transparent',
+    outlineStyle: 'none' as any,
   },
   shortcutBadge: {
     backgroundColor: '#F3F4F6',
@@ -265,6 +336,56 @@ const styles = StyleSheet.create({
     fontFamily: 'Bricolage_500',
     fontSize: 12,
     color: '#6B7280',
+  },
+  searchResultsDropdown: {
+    position: 'absolute',
+    top: 56,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 8,
+    zIndex: 100,
+    overflow: 'hidden',
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  searchResultIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  searchResultTitle: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 15,
+    color: '#111827',
+  },
+  searchResultSub: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  noResultsText: {
+    padding: 24,
+    fontFamily: 'Bricolage_400',
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
   navRight: {
     flexDirection: 'row',
@@ -440,6 +561,23 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontFamily: 'Bricolage_600',
     color: '#FFFFFF',
+    fontSize: 16,
+  },
+  secondaryActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    gap: 8,
+    marginTop: 12,
+  },
+  secondaryActionButtonText: {
+    fontFamily: 'Bricolage_600',
+    color: '#4B5563',
     fontSize: 16,
   }
 });
