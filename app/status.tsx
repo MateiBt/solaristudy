@@ -19,7 +19,7 @@ export default function StatusScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       
-      {/* 1. Consistent Top Navigation */}
+      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -50,16 +50,16 @@ export default function StatusScreen() {
         </View>
       </View>
 
-      {/* 2. Page Header */}
+      {}
       <View style={styles.headerContainer}>
         <Text style={styles.header}>My Progress</Text>
         <Text style={styles.subtitle}>Track your learning journey and milestones.</Text>
       </View>
 
-      {/* 3. Top Level Stats (Bento Row) */}
+      {}
       <View style={styles.statsRow}>
         
-        {/* Primary Stat Card */}
+        {}
         <View style={[styles.statCard, styles.statCardPrimary, isDesktop && styles.statCardDesktop]}>
           <View style={styles.statHeaderRow}>
             <Text style={styles.statTitleLight}>Total Hours Studied</Text>
@@ -71,7 +71,7 @@ export default function StatusScreen() {
           <Text style={styles.statTrendLight}>On track for weekly goal</Text>
         </View>
 
-        {/* Secondary Stat Card */}
+        {}
         <View style={[styles.statCard, isDesktop && styles.statCardDesktop]}>
           <View style={styles.statHeaderRow}>
             <Text style={styles.statTitleDark}>Current Rank</Text>
@@ -85,7 +85,7 @@ export default function StatusScreen() {
 
       </View>
 
-      {/* 4. Subject Mastery Analytics Card */}
+      {}
       <Text style={styles.sectionTitle}>Subject Mastery</Text>
       <View style={styles.masteryCard}>
         {subjectProgress.map((subject, index) => {
@@ -120,7 +120,7 @@ export default function StatusScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#F9FAFB' // Dashboard light gray
+    backgroundColor: '#F9FAFB' 
   },
   scrollContent: {
     padding: 24,

@@ -22,10 +22,10 @@ export default function LeaderboardsScreen() {
 
   const getRankColor = (rank: number) => {
     switch(rank) {
-      case 1: return '#F59E0B'; // Gold
-      case 2: return '#9CA3AF'; // Silver
-      case 3: return '#B45309'; // Bronze
-      default: return '#F3F4F6'; // Default Gray
+      case 1: return '#F59E0B'; 
+      case 2: return '#9CA3AF'; 
+      case 3: return '#B45309'; 
+      default: return '#F3F4F6'; 
     }
   };
 
@@ -36,7 +36,7 @@ export default function LeaderboardsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       
-      {/* 1. Consistent Top Navigation */}
+      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -55,13 +55,13 @@ export default function LeaderboardsScreen() {
         </View>
       </View>
 
-      {/* 2. Page Header */}
+      {}
       <View style={styles.headerContainer}>
         <Text style={styles.headerTitle}>Global Rankings</Text>
         <Text style={styles.headerSubtitle}>See how you stack up against other learners.</Text>
       </View>
 
-      {/* 3. Leaderboard Card (Bento Style) */}
+      {}
       <View style={[styles.boardCard, isDesktop && styles.boardCardDesktop]}>
         <View style={styles.listHeaderRow}>
           <Text style={styles.columnHeaderRank}>Rank</Text>
@@ -82,7 +82,7 @@ export default function LeaderboardsScreen() {
                 isLast && { borderBottomWidth: 0 }
               ]}
             >
-              {/* Rank Badge */}
+              {}
               <View style={styles.rankContainer}>
                 <View style={[styles.rankBadge, { backgroundColor: getRankColor(user.rank) }]}>
                   <Text style={[styles.rankText, { color: getRankTextColor(user.rank) }]}>
@@ -91,7 +91,7 @@ export default function LeaderboardsScreen() {
                 </View>
               </View>
 
-              {/* Avatar & Name */}
+              {}
               <View style={styles.nameContainer}>
                 <View style={[styles.avatar, isCurrentUser && styles.currentUserAvatar]}>
                   <Feather name="user" size={16} color={isCurrentUser ? '#185B37' : '#9CA3AF'} />
@@ -101,7 +101,7 @@ export default function LeaderboardsScreen() {
                 </Text>
               </View>
 
-              {/* Score & Trend */}
+              {}
               <View style={styles.scoreContainer}>
                 <Text style={[styles.scoreText, isCurrentUser && styles.currentUserText]}>
                   {user.score.toLocaleString()}
@@ -125,7 +125,7 @@ export default function LeaderboardsScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#F9FAFB' // Matches Dashboard background
+    backgroundColor: '#F9FAFB' 
   },
   scrollContent: {
     padding: 24,
@@ -231,10 +231,10 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F3F4F6' 
   },
   currentUserRow: { 
-    backgroundColor: '#185B37', // Deep Green
+    backgroundColor: '#185B37', 
     borderRadius: 16,
     paddingHorizontal: 16,
-    marginHorizontal: -16, // Pulls it slightly wider to stand out
+    marginHorizontal: -16, 
     borderBottomWidth: 0,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },

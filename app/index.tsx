@@ -1,8 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation, useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { getDashboardMetrics, getSessions, getUserProfile } from '../lib/db';
+import { SUBJECT_LIST, SubjectConfig } from '../lib/subjects';
+import { ChatSession } from '../lib/types';
 
 export default function Home() {
   const router = useRouter();
@@ -10,22 +13,66 @@ export default function Home() {
   const { width } = useWindowDimensions();
   
   const isDesktop = width > 900;
+  const isTablet = width > 600 && width <= 900;
 
-  // Mock data for the bar chart
-  const weeklyData = [
-    { day: 'S', height: '40%', active: false },
-    { day: 'M', height: '70%', active: true },
-    { day: 'T', height: '100%', active: true },
-    { day: 'W', height: '60%', active: false },
-    { day: 'T', height: '80%', active: false },
-    { day: 'F', height: '50%', active: false },
-    { day: 'S', height: '30%', active: false },
-  ];
+  const [isLoading, setIsLoading] = useState(true);
+  const [metrics, setMetrics] = useState({ totalFocusHours: '0.0', totalProblems: 0, globalAccuracy: 0 });
+  const [streak, setStreak] = useState(0);
+  const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
+  const [pinnedSessions, setPinnedSessions] = useState<ChatSession[]>([]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  async function loadDashboardData() {
+    try {
+      setIsLoading(true);
+      const [fetchedMetrics, profile, allSessions] = await Promise.all([
+        getDashboardMetrics(),
+        getUserProfile(),
+        getSessions('physics') 
+      ]);
+
+      setMetrics(fetchedMetrics);
+      if (profile) setStreak(profile.streak_count);
+
+      
+      const active = allSessions.filter(s => !s.is_archived);
+      setPinnedSessions(active.filter(s => s.is_favorited).slice(0, 5));
+      setRecentSessions(active.slice(0, 5)); 
+      
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const renderSessionCard = (session: ChatSession, isPinned = false) => (
+    <TouchableOpacity 
+      key={session.id} 
+      style={styles.sessionCard}
+      activeOpacity={0.7}
+      onPress={() => router.push(`/chat/${session.subject_id}?sessionId=${session.id}`)}
+    >
+      <View style={styles.sessionCardHeader}>
+        <View style={[styles.sessionIconBox, isPinned && { backgroundColor: '#FEF3C7' }]}>
+          <Feather name={isPinned ? "star" : "clock"} size={16} color={isPinned ? "#D97706" : "#4B5563"} />
+        </View>
+        <Text style={styles.sessionModePill}>{session.mode === 'SolariSolve' ? 'Solve' : 'Learn'}</Text>
+      </View>
+      <Text style={styles.sessionCardTitle} numberOfLines={2}>{session.title}</Text>
+      <Text style={styles.sessionCardDate}>
+        {new Date(session.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+      </Text>
+    </TouchableOpacity>
+  );
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       
-      {/* 1. Top Navigation Bar (Fixes the missing menu toggle) */}
+      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -38,12 +85,14 @@ export default function Home() {
           <Feather name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
           <TextInput 
             style={styles.searchInput}
-            placeholder="Search topics..."
+            placeholder="Search sessions, folders, or topics..."
             placeholderTextColor="#9CA3AF"
           />
-          <View style={styles.shortcutBadge}>
-            <Text style={styles.shortcutText}>⌘F</Text>
-          </View>
+          {Platform.OS === 'web' && (
+            <View style={styles.shortcutBadge}>
+              <Text style={styles.shortcutText}>⌘F</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.navRight}>
@@ -56,149 +105,129 @@ export default function Home() {
         </View>
       </View>
 
-      {/* 2. Page Header */}
+      {}
       <View style={styles.headerContainer}>
         <View>
-          <Text style={styles.headerTitle}>Dashboard</Text>
+          <Text style={styles.headerTitle}>Solari Dashboard</Text>
           <Text style={styles.headerSubtitle}>Plan, prioritize, and accomplish your studies with ease.</Text>
         </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.primaryButton}>
-            <Feather name="plus" size={18} color="#FFFFFF" />
-            <Text style={styles.primaryButtonText}>New Session</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
-      {/* 3. Stats Row */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statCard, styles.statCardPrimary, isDesktop && styles.statCardDesktop]}>
-          <View style={styles.statHeaderRow}>
-            <Text style={styles.statTitleLight}>Total Study Hours</Text>
-            <View style={styles.iconCircleLight}>
-              <Feather name="arrow-up-right" size={14} color="#185B37" />
-            </View>
-          </View>
-          <Text style={styles.statValueLight}>24</Text>
-          <Text style={styles.statTrendLight}>+6h from last month</Text>
-        </View>
-
-        <View style={[styles.statCard, isDesktop && styles.statCardDesktop]}>
-          <View style={styles.statHeaderRow}>
-            <Text style={styles.statTitleDark}>Mastered Topics</Text>
-            <View style={styles.iconCircleDark}>
-              <Feather name="arrow-up-right" size={14} color="#4B5563" />
-            </View>
-          </View>
-          <Text style={styles.statValueDark}>10</Text>
-          <Text style={styles.statTrendDark}>+2 from last month</Text>
-        </View>
-
-        <View style={[styles.statCard, isDesktop && styles.statCardDesktop]}>
-          <View style={styles.statHeaderRow}>
-            <Text style={styles.statTitleDark}>Current Streak</Text>
-            <View style={styles.iconCircleDark}>
-              <Feather name="zap" size={14} color="#4B5563" />
-            </View>
-          </View>
-          <Text style={styles.statValueDark}>12</Text>
-          <Text style={styles.statTrendDark}>Days active</Text>
-        </View>
-
-        <View style={[styles.statCard, isDesktop && styles.statCardDesktop]}>
-          <View style={styles.statHeaderRow}>
-            <Text style={styles.statTitleDark}>Pending Reviews</Text>
-            <View style={styles.iconCircleDark}>
-              <Feather name="arrow-up-right" size={14} color="#4B5563" />
-            </View>
-          </View>
-          <Text style={styles.statValueDark}>2</Text>
-          <Text style={styles.statTrendDark}>Requires attention</Text>
-        </View>
-      </View>
-
-      {/* 4. Main Content Grid */}
-      <View style={styles.mainGrid}>
-        
-        {/* Left Column */}
-        <View style={[styles.column, isDesktop && styles.columnLeft]}>
-          
-          {/* Analytics Chart Mockup */}
-          <View style={styles.chartCard}>
-            <Text style={styles.cardSectionTitle}>Study Analytics</Text>
-            <View style={styles.barChartContainer}>
-              {weeklyData.map((data, index) => (
-                <View key={index} style={styles.barColumn}>
-                  <View style={[styles.barTrack, data.active && styles.barTrackActive]}>
-                    <View style={[styles.barFill, { height: data.height as any }, data.active && styles.barFillActive]} />
-                  </View>
-                  <Text style={styles.barLabel}>{data.day}</Text>
+      {isLoading ? (
+        <ActivityIndicator size="large" color="#185B37" style={{ marginTop: 40 }} />
+      ) : (
+        <>
+          {}
+          <View style={styles.statsRow}>
+            <View style={[styles.statCard, styles.statCardPrimary, (isDesktop || isTablet) && styles.statCardDesktop]}>
+              <View style={styles.statHeaderRow}>
+                <Text style={styles.statTitleLight}>Focus Time</Text>
+                <View style={styles.iconCircleLight}>
+                  <Feather name="clock" size={14} color="#185B37" />
                 </View>
-              ))}
+              </View>
+              <Text style={styles.statValueLight}>{metrics.totalFocusHours} <Text style={{fontSize: 24}}>hrs</Text></Text>
+              <Text style={styles.statTrendLight}>Actual time logged</Text>
+            </View>
+
+            <View style={[styles.statCard, (isDesktop || isTablet) && styles.statCardDesktop]}>
+              <View style={styles.statHeaderRow}>
+                <Text style={styles.statTitleDark}>Problems Solved</Text>
+                <View style={styles.iconCircleDark}>
+                  <Feather name="check-circle" size={14} color="#4B5563" />
+                </View>
+              </View>
+              <Text style={styles.statValueDark}>{metrics.totalProblems}</Text>
+              <Text style={styles.statTrendDark}>Across all subjects</Text>
+            </View>
+
+            <View style={[styles.statCard, (isDesktop || isTablet) && styles.statCardDesktop]}>
+              <View style={styles.statHeaderRow}>
+                <Text style={styles.statTitleDark}>Global Accuracy</Text>
+                <View style={styles.iconCircleDark}>
+                  <Feather name="target" size={14} color="#4B5563" />
+                </View>
+              </View>
+              <Text style={styles.statValueDark}>{metrics.globalAccuracy}%</Text>
+              <Text style={styles.statTrendDark}>Curated graded attempts</Text>
+            </View>
+
+            <View style={[styles.statCard, (isDesktop || isTablet) && styles.statCardDesktop]}>
+              <View style={styles.statHeaderRow}>
+                <Text style={styles.statTitleDark}>Current Streak</Text>
+                <View style={styles.iconCircleDark}>
+                  <Feather name="zap" size={14} color="#D97706" />
+                </View>
+              </View>
+              <Text style={styles.statValueDark}>{streak}</Text>
+              <Text style={styles.statTrendDark}>Consecutive days active</Text>
             </View>
           </View>
 
-          {/* Quick Action Banner */}
-          <View style={styles.reminderCard}>
-            <Text style={styles.reminderTitle}>Upcoming: Quantum Mechanics</Text>
-            <Text style={styles.reminderSubtitle}>Scheduled for Today • 02:00 PM</Text>
-            <TouchableOpacity style={styles.startMeetingButton}>
-              <Feather name="play" size={16} color="#FFFFFF" />
-              <Text style={styles.startMeetingText}>Start Review</Text>
-            </TouchableOpacity>
-          </View>
-
-        </View>
-
-        {/* Right Column */}
-        <View style={[styles.column, isDesktop && styles.columnRight]}>
-          
-          {/* Task List */}
-          <View style={styles.listCard}>
-            <View style={styles.listHeader}>
-              <Text style={styles.cardSectionTitle}>Smart Queue</Text>
-              <TouchableOpacity style={styles.newListButton}>
-                <Text style={styles.newListText}>+ New</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.listItem}>
-              <View style={[styles.listIconBox, { backgroundColor: '#E0E7FF' }]}>
-                <Feather name="aperture" size={16} color="#4F46E5" />
+          {}
+          <View style={styles.decksContainer}>
+            <View style={styles.deckSection}>
+              <View style={styles.deckHeader}>
+                <Text style={styles.deckTitle}>Continue Studying</Text>
               </View>
-              <View>
-                <Text style={styles.listTitle}>Kinematics Formulas</Text>
-                <Text style={styles.listSubtitle}>Due date: Nov 26, 2024</Text>
-              </View>
+              {recentSessions.length === 0 ? (
+                <View style={styles.emptyDeck}><Text style={styles.emptyDeckText}>No recent sessions.</Text></View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.deckScroll}>
+                  {recentSessions.map(s => renderSessionCard(s, false))}
+                </ScrollView>
+              )}
             </View>
 
-            <View style={styles.listItem}>
-              <View style={[styles.listIconBox, { backgroundColor: '#D1FAE5' }]}>
-                <Feather name="pie-chart" size={16} color="#10B981" />
+            <View style={styles.deckSection}>
+              <View style={styles.deckHeader}>
+                <Text style={styles.deckTitle}>Pinned Sessions</Text>
               </View>
-              <View>
-                <Text style={styles.listTitle}>Calculus Integration</Text>
-                <Text style={styles.listSubtitle}>Due date: Nov 28, 2024</Text>
-              </View>
+              {pinnedSessions.length === 0 ? (
+                <View style={styles.emptyDeck}><Text style={styles.emptyDeckText}>Star a session to pin it here.</Text></View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.deckScroll}>
+                  {pinnedSessions.map(s => renderSessionCard(s, true))}
+                </ScrollView>
+              )}
             </View>
           </View>
 
-          {/* Time Tracker Card */}
-          <View style={styles.timerCard}>
-            <Text style={styles.timerTitle}>Time Tracker</Text>
-            <Text style={styles.timerClock}>01:24:08</Text>
-            <View style={styles.timerControls}>
-              <TouchableOpacity style={styles.timerControlButton}>
-                <Feather name="pause" size={20} color="#185B37" />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.timerControlButton, { backgroundColor: '#EF4444' }]}>
-                <Feather name="square" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+          {}
+          <Text style={[styles.deckTitle, { marginBottom: 16, marginTop: 24 }]}>Study Hubs</Text>
+          <View style={styles.mainGrid}>
+            {SUBJECT_LIST.map((subject: SubjectConfig) => (
+              <View key={subject.id} style={[styles.subjectCard, isDesktop && styles.subjectCardDesktop, isTablet && styles.subjectCardTablet]}>
+                <View style={styles.subjectCardContent}>
+                  <View style={[styles.subjectIconWrap, { backgroundColor: subject.bgColor }]}>
+                    <Feather name={subject.icon as any} size={24} color={subject.color} />
+                  </View>
+                  <Text style={styles.subjectTitle}>{subject.name}</Text>
+                  <Text style={styles.subjectDesc}>{subject.description}</Text>
+                </View>
+                
+                <View style={styles.subjectActions}>
+                  <TouchableOpacity 
+                    style={[styles.subjectBtn, styles.subjectBtnPrimary, { backgroundColor: subject.color }]}
+                    onPress={() => router.push(`/chat/${subject.id}`)}
+                  >
+                    <Feather name="play" size={14} color="#FFFFFF" />
+                    <Text style={styles.subjectBtnTextLight}>Start Session</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.subjectBtn, styles.subjectBtnSecondary]}
+                    onPress={() => router.push(`/subject/${subject.id}`)}
+                  >
+                    <Feather name="folder" size={14} color="#4B5563" />
+                    <Text style={styles.subjectBtnTextDark}>Explore & Review</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
-
-        </View>
-      </View>
+        </>
+      )}
 
     </ScrollView>
   );
@@ -250,8 +279,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Bricolage_400',
     fontSize: 15,
     color: '#111827',
-    outlineStyle: 'solid',
-    outlineColor: 'transparent',
+    outlineStyle: 'none' as any, 
   },
   shortcutBadge: {
     backgroundColor: '#F3F4F6',
@@ -306,29 +334,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#185B37', // Deep Green
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
-    gap: 8,
-  },
-  primaryButtonText: {
-    fontFamily: 'Bricolage_500',
-    color: '#FFFFFF',
-    fontSize: 15,
-  },
   statsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 16,
-    marginBottom: 32,
+    marginBottom: 40,
   },
   statCard: {
     backgroundColor: '#FFFFFF',
@@ -337,10 +347,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    elevation: 1,
   },
   statCardDesktop: {
     flex: 1,
-    minWidth: 200,
+    minWidth: 220,
   },
   statCardPrimary: {
     backgroundColor: '#185B37',
@@ -402,183 +417,178 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#9CA3AF',
   },
+
+  
+  decksContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 24,
+    marginBottom: 40,
+  },
+  deckSection: {
+    flex: 1,
+    minWidth: 300,
+  },
+  deckHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  deckTitle: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 18,
+    color: '#111827',
+  },
+  deckScroll: {
+    gap: 16,
+    paddingBottom: 8, 
+  },
+  emptyDeck: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyDeckText: {
+    fontFamily: 'Bricolage_400',
+    color: '#9CA3AF',
+  },
+  sessionCard: {
+    backgroundColor: '#FFFFFF',
+    width: 240,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sessionCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  sessionIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sessionModePill: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 11,
+    color: '#6B7280',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  sessionCardTitle: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 15,
+    color: '#111827',
+    marginBottom: 8,
+    height: 40, 
+  },
+  sessionCardDate: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+
+  
   mainGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 24,
   },
-  column: {
-    width: '100%',
-    gap: 24,
-  },
-  columnLeft: {
-    flex: 6,
-  },
-  columnRight: {
-    flex: 4,
-  },
-  chartCard: {
+  subjectCard: {
     backgroundColor: '#FFFFFF',
-    padding: 24,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-  },
-  cardSectionTitle: {
-    fontFamily: 'Bricolage_600',
-    fontSize: 18,
-    color: '#111827',
-    marginBottom: 24,
-  },
-  barChartContainer: {
-    flexDirection: 'row',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 180,
-    paddingTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  barColumn: {
-    alignItems: 'center',
-    width: 32,
-    height: '100%',
+  subjectCardTablet: {
+    width: 'calc(50% - 12px)' as any, 
   },
-  barTrack: {
-    flex: 1,
-    width: 32,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-    marginBottom: 12,
+  subjectCardDesktop: {
+    width: 'calc(25% - 18px)' as any, 
   },
-  barTrackActive: {
-    backgroundColor: '#E6F0EB', // Soft green background
-  },
-  barFill: {
-    width: '100%',
-    backgroundColor: '#D1D5DB', 
-    borderRadius: 16,
-  },
-  barFillActive: {
-    backgroundColor: '#185B37', // Solid Green
-  },
-  barLabel: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  reminderCard: {
-    backgroundColor: '#FFFFFF',
+  subjectCardContent: {
     padding: 24,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
-  reminderTitle: {
+  subjectIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  subjectTitle: {
     fontFamily: 'Bricolage_600',
     fontSize: 20,
-    color: '#185B37',
+    color: '#111827',
     marginBottom: 8,
   },
-  reminderSubtitle: {
+  subjectDesc: {
     fontFamily: 'Bricolage_400',
     fontSize: 14,
     color: '#6B7280',
-    marginBottom: 20,
+    lineHeight: 20,
   },
-  startMeetingButton: {
+  subjectActions: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    padding: 16,
+    gap: 8,
+  },
+  subjectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#185B37',
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 12,
     gap: 8,
   },
-  startMeetingText: {
+  subjectBtnPrimary: {
+    
+  },
+  subjectBtnSecondary: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  subjectBtnTextLight: {
     fontFamily: 'Bricolage_500',
+    fontSize: 14,
     color: '#FFFFFF',
-    fontSize: 15,
   },
-  listCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 24,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  newListButton: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  newListText: {
+  subjectBtnTextDark: {
     fontFamily: 'Bricolage_500',
-    fontSize: 13,
+    fontSize: 14,
     color: '#4B5563',
-  },
-  listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  listIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  listTitle: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 15,
-    color: '#111827',
-    marginBottom: 4,
-  },
-  listSubtitle: {
-    fontFamily: 'Bricolage_400',
-    fontSize: 13,
-    color: '#9CA3AF',
-  },
-  timerCard: {
-    backgroundColor: '#0F3E24', // Deepest green gradient base
-    padding: 32,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timerTitle: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 16,
-    color: '#E6F0EB',
-    marginBottom: 12,
-  },
-  timerClock: {
-    fontFamily: 'Bricolage_600',
-    fontSize: 48,
-    color: '#FFFFFF',
-    letterSpacing: -1,
-    marginBottom: 24,
-  },
-  timerControls: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  timerControlButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

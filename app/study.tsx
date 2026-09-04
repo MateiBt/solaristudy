@@ -9,7 +9,7 @@ export default function StudyEngine() {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
   
-  // Dynamic layout: 1 column on mobile, 2 columns on wide screens
+  
   const isLargeScreen = width > 900;
 
   const subjects = [
@@ -93,7 +93,7 @@ export default function StudyEngine() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       
-      {/* 1. Top Navigation Bar */}
+      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -124,7 +124,7 @@ export default function StudyEngine() {
         </View>
       </View>
       
-      {/* 2. Page Header */}
+      {}
       <View style={styles.headerContainer}>
         <View>
           <Text style={styles.header}>Study Dashboard</Text>
@@ -135,12 +135,12 @@ export default function StudyEngine() {
         </View>
       </View>
       
-      {/* 3. Grid Container */}
+      {}
       <View style={[styles.gridContainer, isLargeScreen && styles.gridContainerWide]}>
         {subjects.map((subject) => (
           <View key={subject.id} style={[styles.card, isLargeScreen && styles.cardWide]}>
             
-            {/* Header: Icon & Title */}
+            {}
             <View style={styles.cardHeader}>
               <View style={[styles.iconBox, { backgroundColor: subject.bgColor }]}>
                 <Feather name={subject.icon as any} size={24} color={subject.color} />
@@ -148,7 +148,7 @@ export default function StudyEngine() {
               <Text style={styles.cardTitle}>{subject.name}</Text>
             </View>
 
-            {/* Insights Row (The Bento Stats) */}
+            {}
             <View style={styles.statsContainer}>
               <View style={styles.statBox}>
                 <Feather name="clock" size={14} color="#6B7280" />
@@ -174,7 +174,7 @@ export default function StudyEngine() {
 
             <View style={styles.divider} />
 
-            {/* Content: Intro & Bullets */}
+            {}
             <Text style={styles.introText}>{subject.intro}</Text>
             <View style={styles.bulletsContainer}>
               {subject.bullets.map((bullet, index) => (
@@ -185,7 +185,7 @@ export default function StudyEngine() {
               ))}
             </View>
 
-            {/* Footer Action */}
+            {}
             <View style={styles.cardFooter}>
               <TouchableOpacity 
                 style={[styles.actionButton, { backgroundColor: subject.color }]}
@@ -208,12 +208,12 @@ export default function StudyEngine() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#F9FAFB' // Matched to dashboard
+    backgroundColor: '#F9FAFB' 
   },
   scrollContent: {
     padding: 24,
     paddingTop: 40,
-    maxWidth: 1200, // Matched to dashboard
+    maxWidth: 1200, 
     width: '100%',
     alignSelf: 'center',
     paddingBottom: 64,

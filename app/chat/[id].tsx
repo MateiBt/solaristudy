@@ -22,14 +22,14 @@ import { createFolder, createSession, deleteSession, getFolders, getSessions, up
 import { supabase } from '../../lib/supabase';
 import { ChatMessage, ChatSession, SessionMode, SolveStage, StudyFolder } from '../../lib/types';
 
-// --- PHYSICS TOPICS ---
+
 const PHYSICS_TOPICS = [
   'Classical Mechanics', 'Quantum Mechanics', 'Electromagnetism', 
   'Statistical Physics', 'Condensed Matter', 'General Relativity', 
   'Optics', 'Quantum Field Theory', 'Other topics'
 ];
 
-// --- Custom LaTeX & Markdown Engine ---
+
 const MathBubble = ({ content }: { content: string }) => {
   const [height, setHeight] = useState(40);
 
@@ -46,10 +46,10 @@ const MathBubble = ({ content }: { content: string }) => {
     <html>
     <head>
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-      <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-      <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-      <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+      <script src="https:
+      <link rel="stylesheet" href="https:
+      <script defer src="https:
+      <script defer src="https:
       <style>
         body { 
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
@@ -137,11 +137,11 @@ export default function ChatScreen() {
   const [attachment, setAttachment] = useState<{ uri: string, base64: string, mimeType: string } | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null); 
 
-  // Mode & Stage State
+  
   const [activeMode, setActiveMode] = useState<SessionMode>('SolariLearn');
   const [solvePhase, setSolvePhase] = useState<SolveStage>('ingest_problems');
 
-  // Focus Timer State
+  
   const [focusTimerStatus, setFocusTimerStatus] = useState<'idle' | 'running'>('idle');
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
 
@@ -171,7 +171,7 @@ export default function ChatScreen() {
     }
   }, [activeSession]);
 
-  // Timer Tick Effect (FIXED TYPE ERROR HERE)
+  
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     
@@ -283,7 +283,7 @@ export default function ChatScreen() {
     }
   }
 
-  // --- Focus Engine Methods ---
+  
   async function handleStartFocus(minutes: number) {
     setTimeRemaining(minutes * 60);
     setFocusTimerStatus('running');
@@ -299,7 +299,6 @@ export default function ChatScreen() {
     if (activeSession) {
        await updateSolveStage(activeSession.id, 'grading_and_review', { completedAt: new Date().toISOString() });
        
-       // Inject an automated system message notifying them the timer ended
        const contentMsg = "Focus session complete! 🎯 Submit your answers or workings whenever you're ready for grading.";
        
        const tempMsgId = 'sys-' + Date.now();
@@ -312,6 +311,9 @@ export default function ChatScreen() {
          status: 'completed',
          ocr_content: null,
          media_url: null,
+         score_earned: null,         
+         score_possible: null,       
+         include_in_accuracy: false, 
          created_at: new Date().toISOString()
        }]);
 
@@ -361,13 +363,16 @@ export default function ChatScreen() {
       const tempUserMsgId = 'temp-user-' + Date.now();
       setMessages(prev => [...prev, {
         id: tempUserMsgId,
-        session_id: sessionToUse.id,
-        user_id: sessionToUse.user_id,
+        session_id: sessionToUse!.id,
+        user_id: sessionToUse!.user_id,
         sender: 'user',
         content: displayContent,
         status: 'completed',
         ocr_content: null,
         media_url: null,
+        score_earned: null,         
+        score_possible: null,       
+        include_in_accuracy: true,  
         created_at: new Date().toISOString()
       }]);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
@@ -394,13 +399,16 @@ export default function ChatScreen() {
       const tempAiMsgId = 'temp-ai-' + Date.now();
       setMessages(prev => [...prev, {
         id: tempAiMsgId,
-        session_id: sessionToUse.id,
-        user_id: sessionToUse.user_id,
+        session_id: sessionToUse!.id,
+        user_id: sessionToUse!.user_id,
         sender: 'ai',
         content: '',
         status: 'streaming',
         ocr_content: null,
         media_url: null,
+        score_earned: null,         
+        score_possible: null,       
+        include_in_accuracy: true,  
         created_at: new Date().toISOString()
       }]);
 
@@ -413,7 +421,7 @@ export default function ChatScreen() {
         setMessages(prev => prev.map(m => m.id === tempAiMsgId ? { ...m, content: streamedText } : m));
       });
 
-      // Transition stage if we just ingested problems
+      
       if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems') {
         setSolvePhase('focus_timer');
         await updateSolveStage(sessionToUse.id, 'focus_timer');
@@ -570,7 +578,6 @@ export default function ChatScreen() {
     </View>
   );
 
-  // --- New Focus Engine Renderer ---
   const renderFocusEngine = () => (
     <View style={styles.focusEngineContainer}>
       {focusTimerStatus === 'idle' ? (
@@ -670,7 +677,6 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       
-      {/* ... Modals (Title, Folder, Options) unchanged ... */}
       <Modal visible={showTitleModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -1063,7 +1069,7 @@ const styles = StyleSheet.create({
   modeCardTitleActive: { color: '#185B37' },
   modeCardSub: { fontFamily: 'Bricolage_400', fontSize: 13, color: '#6B7280', lineHeight: 20 },
 
-  // --- Focus Engine Styles ---
+  
   focusEngineContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F5F7', padding: 24 },
   focusTitle: { fontFamily: 'Bricolage_600', fontSize: 28, color: '#111827', marginBottom: 12 },
   focusSubtitle: { fontFamily: 'Bricolage_400', fontSize: 16, color: '#6B7280', marginBottom: 32, textAlign: 'center' },

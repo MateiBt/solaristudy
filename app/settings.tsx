@@ -10,7 +10,7 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       
-      {/* 1. Consistent Top Navigation */}
+      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -41,13 +41,13 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* 2. Page Header */}
+      {}
       <View style={styles.headerContainer}>
         <Text style={styles.header}>Settings</Text>
         <Text style={styles.subtitle}>Manage your account and preferences.</Text>
       </View>
 
-      {/* 3. Settings Sections */}
+      {}
       <Text style={styles.sectionTitle}>Account</Text>
       <View style={styles.sectionCard}>
         <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
@@ -86,7 +86,7 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 4. Logout Action */}
+      {}
       <TouchableOpacity style={styles.logoutButton} activeOpacity={0.8}>
         <Feather name="log-out" size={18} color="#EF4444" style={{ marginRight: 8 }} />
         <Text style={styles.logoutText}>Log Out</Text>
@@ -99,12 +99,12 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#F9FAFB' // Dashboard light gray
+    backgroundColor: '#F9FAFB' 
   },
   scrollContent: {
     padding: 24,
     paddingTop: 40,
-    maxWidth: 800, // Kept narrower so rows don't stretch too far on desktop
+    maxWidth: 800, 
     width: '100%',
     alignSelf: 'center',
     paddingBottom: 64,

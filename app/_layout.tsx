@@ -14,19 +14,19 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-// Import Supabase
+
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
 
-// 1. Build the Custom Sidebar Component
+
 function CustomDrawerContent(props: any) {
   const router = useRouter();
   const pathname = usePathname();
   const user = props.user as User | null;
 
-  // Extract real user info or fallback
+  
   const userEmail = user?.email || 'Guest';
   const userName = user?.user_metadata?.full_name || userEmail.split('@')[0] || 'User';
 
@@ -54,7 +54,7 @@ function CustomDrawerContent(props: any) {
     <View style={styles.drawerContainer}>
       <DrawerContentScrollView {...props} contentContainerStyle={styles.scrollContent} scrollEnabled={false}>
         
-        {/* Top Header / Brand */}
+        {}
         <View style={styles.brandHeader}>
           <View style={styles.brandLogo}>
             <Feather name="hexagon" size={22} color="#FFFFFF" />
@@ -64,7 +64,7 @@ function CustomDrawerContent(props: any) {
           <Feather name="search" size={18} color="#A1A1AA" />
         </View>
 
-        {/* Main Navigation Map */}
+        {}
         <View style={styles.navSection}>
           <NavItem icon="home" label="Home" route="/" />
           <NavItem icon="cpu" label="Study Engine" route="/study" badge="4" />
@@ -74,15 +74,15 @@ function CustomDrawerContent(props: any) {
 
         <View style={styles.divider} />
         
-        {/* Spacer pushes the footer to the bottom */}
+        {}
         <View style={{ flex: 1 }} />
 
-        {/* Bottom Footer & Settings */}
+        {}
         <View style={styles.footerSection}>
           <NavItem icon="life-buoy" label="Support" route="#" />
           <NavItem icon="settings" label="Settings" route="/settings" />
           
-          {/* Dynamic User Profile Card */}
+          {}
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
               <Feather name="user" size={18} color="#FFFFFF" />
@@ -92,7 +92,7 @@ function CustomDrawerContent(props: any) {
               <Text style={styles.profileName} numberOfLines={1}>{userName}</Text>
               <Text style={styles.profileEmail} numberOfLines={1}>{userEmail}</Text>
             </View>
-            {/* Added Logout Button */}
+            {}
             <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ padding: 4 }}>
               <Feather name="log-out" size={16} color="#A1A1AA" />
             </TouchableOpacity>
@@ -104,7 +104,7 @@ function CustomDrawerContent(props: any) {
   );
 }
 
-// 2. Main Root Layout
+
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     Bricolage_400: BricolageGrotesque_400Regular,
@@ -117,7 +117,7 @@ export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
 
-  // Initialize Auth State
+  
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -131,18 +131,18 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Strict Routing Guard
+  
   useEffect(() => {
     if (!authInitialized) return;
 
-    // 'segments[0]' tells us the top-level route name
+    
     const inAuthGroup = segments[0] === 'login';
 
     if (!user && !inAuthGroup) {
-      // User is not logged in and trying to access a secure screen -> kick to login
+      
       router.replace('/login');
     } else if (user && inAuthGroup) {
-      // User is already logged in but sitting on the login screen -> kick to home
+      
       router.replace('/');
     }
   }, [user, authInitialized, segments]);
@@ -154,7 +154,7 @@ export default function RootLayout() {
   }, [loaded, error]);
 
   if (!loaded && !error) return null;
-  if (!authInitialized) return null; // Prevent UI flickering while checking auth
+  if (!authInitialized) return null; 
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -176,14 +176,14 @@ export default function RootLayout() {
         <Drawer.Screen name="leaderboards" />
         <Drawer.Screen name="settings" />
         <Drawer.Screen name="chat/[id]" />
-        {/* The login screen should NOT be swipable from the drawer */}
+        {}
         <Drawer.Screen name="login" options={{ swipeEnabled: false }} />
       </Drawer>
     </GestureHandlerRootView>
   );
 }
 
-// 3. Styles for the Custom Drawer
+
 const styles = StyleSheet.create({
   drawerContainer: { flex: 1, backgroundColor: '#18181B' },
   scrollContent: { flex: 1, paddingTop: 24 },

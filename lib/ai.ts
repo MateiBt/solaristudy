@@ -1,4 +1,4 @@
-// lib/ai.ts
+
 import { supabase } from './supabase';
 
 export type SolariMode = 'SolariLearn' | 'SolariSolve';
@@ -12,23 +12,23 @@ export interface AIRequestOptions {
   folderContext?: string;
 }
 
-// Your Supabase Edge Function URL
-const EDGE_FUNCTION_URL = 'https://wyivhhhhosokazyrovti.supabase.co/functions/v1/chat-completion';
+
+const EDGE_FUNCTION_URL = 'https:
 
 export async function generateAIResponse(
   prompt: string,
   options: AIRequestOptions,
-  onUpdate?: (fullText: string) => void // Streaming callback
+  onUpdate?: (fullText: string) => void 
 ): Promise<string> {
   const { mode, model_id = 'gemini-3.5-flash-lite', conversationHistory = [], folderContext = '' } = options;
 
-  // 1. Securely fetch the logged-in user's JWT token
+  
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error || !session?.access_token) {
     throw new Error('You must be authenticated to interact with the AI.');
   }
 
-  // 2. Package the request exactly as the Edge Function expects
+  
   const payload = {
     prompt,
     history: conversationHistory,
@@ -37,12 +37,12 @@ export async function generateAIResponse(
     folder_context: folderContext,
   };
 
-  // 3. Use XMLHttpRequest for bulletproof chunk streaming in React Native
+  
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', EDGE_FUNCTION_URL, true);
     
-    // Add required headers (JSON payload + Supabase Auth Token)
+    
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
 
@@ -56,7 +56,7 @@ export async function generateAIResponse(
       buffer += newText;
 
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+      buffer = lines.pop() || ''; 
 
       for (const line of lines) {
         if (line.trim().startsWith('data:')) {
@@ -66,9 +66,9 @@ export async function generateAIResponse(
             const parsed = JSON.parse(dataStr);
             const chunkText = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
             fullText += chunkText;
-            if (onUpdate) onUpdate(fullText); // Send the updated text to the UI
+            if (onUpdate) onUpdate(fullText); 
           } catch (e) {
-            // Ignore partial JSON parse errors as chunks stream in
+            
           }
         }
       }

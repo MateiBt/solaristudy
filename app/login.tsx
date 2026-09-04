@@ -2,26 +2,26 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 export default function LoginScreen() {
   const router = useRouter();
   
-  // State
+  
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   
-  // Form Fields
+  
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,16 +41,16 @@ export default function LoginScreen() {
 
     try {
       if (isLogin) {
-        // --- SIGN IN ---
+        
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password: password.trim(),
         });
         if (error) throw error;
         
-        // Once successful, the auth listener in _layout.tsx will automatically redirect to '/'
+        
       } else {
-        // --- SIGN UP ---
+        
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password: password.trim(),
@@ -62,11 +62,11 @@ export default function LoginScreen() {
         });
         if (error) throw error;
         
-        // If email confirmation is required, session will be null
+        
         if (data.user && !data.session) {
           setErrorMsg('');
           alert('Account created! Please check your email to confirm your account before signing in.');
-          setIsLogin(true); // Switch to the login tab so they can sign in after confirming
+          setIsLogin(true); 
         }
       }
     } catch (error: any) {
@@ -80,7 +80,7 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.card}>
         
-        {/* Brand Header */}
+        {}
         <View style={styles.header}>
           <View style={styles.logoBox}>
             <Feather name="hexagon" size={24} color="#FFFFFF" />
@@ -88,7 +88,7 @@ export default function LoginScreen() {
           <Text style={styles.brandTitle}>SolariStudy</Text>
         </View>
 
-        {/* Title */}
+        {}
         <Text style={styles.title}>{isLogin ? 'Welcome back' : 'Create an account'}</Text>
         <Text style={styles.subtitle}>
           {isLogin 
@@ -96,7 +96,7 @@ export default function LoginScreen() {
             : 'Join SolariStudy to start mastering your topics.'}
         </Text>
 
-        {/* Error Message */}
+        {}
         {errorMsg ? (
           <View style={styles.errorBox}>
             <Feather name="alert-circle" size={16} color="#EF4444" />
@@ -104,7 +104,7 @@ export default function LoginScreen() {
           </View>
         ) : null}
 
-        {/* Form */}
+        {}
         <View style={styles.form}>
           {!isLogin && (
             <View style={styles.inputWrapper}>
@@ -158,7 +158,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Toggle Mode */}
+        {}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
             {isLogin ? "Don't have an account? " : "Already have an account? "}

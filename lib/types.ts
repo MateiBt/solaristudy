@@ -1,4 +1,4 @@
-// lib/types.ts
+
 
 export type SessionMode = 'SolariLearn' | 'SolariSolve';
 export type SolveStage = 'ingest_problems' | 'focus_timer' | 'grading_and_review';
@@ -23,6 +23,7 @@ export interface ChatSession {
   model_id: string;
   solve_stage: SolveStage | null;
   focus_duration_seconds: number | null;
+  actual_focus_seconds: number; 
   focus_started_at: string | null;
   focus_completed_at: string | null;
   problem_count: number;
@@ -42,5 +43,17 @@ export interface ChatMessage {
   status: MessageStatus;
   ocr_content: string | null;
   media_url: string | null;
+  score_earned: number | null;        
+  score_possible: number | null;      
+  include_in_accuracy: boolean;       
+  created_at: string;
+}
+
+
+export interface UserProfile {
+  id: string;
+  streak_count: number;
+  last_active_date: string | null;
+  unlocked_badges: string[];
   created_at: string;
 }
