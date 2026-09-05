@@ -1,143 +1,198 @@
 import { Feather } from '@expo/vector-icons';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useState } from 'react';
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
+} from 'react-native';
+import { SUBJECT_LIST } from '../lib/subjects';
+
+const MOCK_LEADERBOARD = [
+  { id: '1', name: 'Elena R.', avatar: 'https://i.pravatar.cc/150?u=elena', score: 142, metric: 'Streak Days' },
+  { id: '2', name: 'Marcus T.', avatar: 'https://i.pravatar.cc/150?u=marcus', score: 128, metric: 'Streak Days' },
+  { id: '3', name: 'Sophie L.', avatar: 'https://i.pravatar.cc/150?u=sophie', score: 115, metric: 'Streak Days' },
+  { id: '4', name: 'David K.', avatar: 'https://i.pravatar.cc/150?u=david', score: 98, metric: 'Streak Days' },
+  { id: '5', name: 'Amira H.', avatar: 'https://i.pravatar.cc/150?u=amira', score: 87, metric: 'Streak Days' },
+  { id: '6', name: 'Scholar (You)', avatar: null, score: 12, metric: 'Streak Days' },
+  { id: '7', name: 'James W.', avatar: 'https://i.pravatar.cc/150?u=james', score: 8, metric: 'Streak Days' },
+];
 
 export default function LeaderboardsScreen() {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
-  
-  const isDesktop = width > 900;
 
-  const users = [
-    { rank: 1, name: 'Alex M.', score: 2450, trend: 'up' },
-    { rank: 2, name: 'Sarah J.', score: 2120, trend: 'up' },
-    { rank: 3, name: 'You', score: 1840, trend: 'up' },
-    { rank: 4, name: 'David K.', score: 1650, trend: 'down' },
-    { rank: 5, name: 'Emma W.', score: 1420, trend: 'same' },
-    { rank: 6, name: 'James L.', score: 1390, trend: 'down' },
-    { rank: 7, name: 'Maria S.', score: 1200, trend: 'up' },
-  ];
+  const [activeMetric, setActiveMetric] = useState<'Streak' | 'Hours' | 'Accuracy'>('Streak');
+  const [activeSubject, setActiveSubject] = useState<string>('global');
 
-  const getRankColor = (rank: number) => {
-    switch(rank) {
-      case 1: return '#F59E0B'; 
-      case 2: return '#9CA3AF'; 
-      case 3: return '#B45309'; 
-      default: return '#F3F4F6'; 
-    }
-  };
-
-  const getRankTextColor = (rank: number) => {
-    return rank <= 3 ? '#FFFFFF' : '#6B7280';
-  };
+  const topThree = MOCK_LEADERBOARD.slice(0, 3);
+  const remaining = MOCK_LEADERBOARD.slice(3);
+  const myRankIndex = MOCK_LEADERBOARD.findIndex(u => u.name.includes('(You)'));
+  const myRank = myRankIndex >= 0 ? myRankIndex + 1 : 142;
+  const myData = MOCK_LEADERBOARD[myRankIndex] || { name: 'Scholar (You)', score: 0 };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      
-      {}
-      <View style={styles.topNav}>
-        <TouchableOpacity 
-          style={styles.menuButton} 
-          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-        >
-          <Feather name="menu" size={24} color="#111827" />
-        </TouchableOpacity>
-        
-        <View style={styles.navRight}>
-          <TouchableOpacity style={styles.iconButton}>
-            <Feather name="bell" size={20} color="#4B5563" />
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.topNav}>
+          <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())} style={styles.menuButton}>
+            <Feather color="#111827" name="menu" size={24} />
           </TouchableOpacity>
-          <View style={styles.profileAvatar}>
-            <Feather name="user" size={18} color="#FFFFFF" />
+        </View>
+
+        <View style={styles.headerContainer}>
+          <Text style={styles.headerTitle}>Leaderboards</Text>
+          <Text style={styles.headerSubtitle}>See how you stack up against top scholars.</Text>
+        </View>
+
+        <View style={styles.filtersContainer}>
+          <View style={styles.metricsTabs}>
+            {(['Streak', 'Hours', 'Accuracy'] as const).map(metric => (
+              <TouchableOpacity 
+                key={metric} 
+                onPress={() => setActiveMetric(metric)} 
+                style={[styles.metricTab, activeMetric === metric && styles.metricTabActive]}
+              >
+                <Text style={[styles.metricTabText, activeMetric === metric && styles.metricTabTextActive]}>
+                  {metric}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <ScrollView contentContainerStyle={styles.subjectsContainer} horizontal showsHorizontalScrollIndicator={false} style={styles.subjectsScroll}>
+            <TouchableOpacity 
+              onPress={() => setActiveSubject('global')} 
+              style={[styles.subjectChip, activeSubject === 'global' && styles.subjectChipActive]}
+            >
+              <Text style={[styles.subjectChipText, activeSubject === 'global' && styles.subjectChipTextActive]}>Global</Text>
+            </TouchableOpacity>
+            {SUBJECT_LIST.map(sub => (
+              <TouchableOpacity 
+                key={sub.id} 
+                onPress={() => setActiveSubject(sub.id)} 
+                style={[
+                  styles.subjectChip, 
+                  { borderColor: sub.color }, 
+                  activeSubject === sub.id && { backgroundColor: sub.bgColor, borderColor: sub.color }
+                ]}
+              >
+                <Text style={[styles.subjectChipText, activeSubject === sub.id && styles.subjectChipTextActive]}>
+                  {sub.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={styles.boardContainer}>
+          <View style={styles.podiumRow}>
+            {topThree[1] && (
+              <View style={[styles.podiumItem, styles.podiumSecond]}>
+                <View style={styles.avatarWrapper}>
+                  <Image source={{ uri: topThree[1].avatar! }} style={styles.avatarImage} />
+                  <View style={[styles.rankBadge, { backgroundColor: '#9CA3AF' }]}>
+                    <Text style={styles.rankBadgeText}>2</Text>
+                  </View>
+                </View>
+                <Text numberOfLines={1} style={styles.podiumName}>{topThree[1].name}</Text>
+                <Text style={styles.podiumScore}>{topThree[1].score}</Text>
+              </View>
+            )}
+
+            {topThree[0] && (
+              <View style={[styles.podiumItem, styles.podiumFirst]}>
+                <View style={styles.avatarWrapper}>
+                  <Image 
+                    source={{ uri: topThree[0].avatar! }} 
+                    style={[styles.avatarImage, { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#F59E0B' }]} 
+                  />
+                  <View style={[styles.rankBadge, { width: 28, height: 28, borderRadius: 14, bottom: -4, backgroundColor: '#F59E0B' }]}>
+                    <Text style={[styles.rankBadgeText, { fontSize: 14 }]}>1</Text>
+                  </View>
+                </View>
+                <Text numberOfLines={1} style={[styles.podiumName, { fontSize: 18, marginTop: 18 }]}>{topThree[0].name}</Text>
+                <Text style={[styles.podiumScore, { fontSize: 16, color: '#F59E0B' }]}>{topThree[0].score}</Text>
+              </View>
+            )}
+
+            {topThree[2] && (
+              <View style={[styles.podiumItem, styles.podiumThird]}>
+                <View style={styles.avatarWrapper}>
+                  <Image source={{ uri: topThree[2].avatar! }} style={styles.avatarImage} />
+                  <View style={[styles.rankBadge, { backgroundColor: '#B45309' }]}>
+                    <Text style={styles.rankBadgeText}>3</Text>
+                  </View>
+                </View>
+                <Text numberOfLines={1} style={styles.podiumName}>{topThree[2].name}</Text>
+                <Text style={styles.podiumScore}>{topThree[2].score}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.listContainer}>
+            {remaining.map((user, index) => {
+              const actualRank = index + 4;
+              const isMe = user.name.includes('(You)');
+              
+              return (
+                <View key={user.id} style={[styles.listItem, isMe && styles.listItemMe]}>
+                  <Text style={styles.listRank}>{actualRank}</Text>
+                  <View style={styles.listAvatar}>
+                    {user.avatar ? (
+                      <Image source={{ uri: user.avatar }} style={styles.listAvatarImage} />
+                    ) : (
+                      <Feather color="#FFFFFF" name="user" size={16} />
+                    )}
+                  </View>
+                  <Text numberOfLines={1} style={[styles.listName, isMe && styles.listNameMe]}>
+                    {user.name}
+                  </Text>
+                  <Text style={[styles.listScore, isMe && styles.listScoreMe]}>{user.score}</Text>
+                </View>
+              );
+            })}
           </View>
         </View>
-      </View>
+      </ScrollView>
 
-      {}
-      <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>Global Rankings</Text>
-        <Text style={styles.headerSubtitle}>See how you stack up against other learners.</Text>
-      </View>
-
-      {}
-      <View style={[styles.boardCard, isDesktop && styles.boardCardDesktop]}>
-        <View style={styles.listHeaderRow}>
-          <Text style={styles.columnHeaderRank}>Rank</Text>
-          <Text style={styles.columnHeaderName}>Student</Text>
-          <Text style={styles.columnHeaderScore}>Total XP</Text>
+      <View style={styles.stickyFooter}>
+        <View style={styles.stickyContent}>
+          <Text style={styles.listRank}>{myRank}</Text>
+          <View style={[styles.listAvatar, { backgroundColor: '#185B37' }]}>
+            <Feather color="#FFFFFF" name="user" size={16} />
+          </View>
+          <Text numberOfLines={1} style={[styles.listName, styles.listNameMe]}>
+            {myData.name}
+          </Text>
+          <Text style={[styles.listScore, styles.listScoreMe]}>{myData.score}</Text>
         </View>
-
-        {users.map((user, index) => {
-          const isCurrentUser = user.name === 'You';
-          const isLast = index === users.length - 1;
-
-          return (
-            <View 
-              key={user.rank} 
-              style={[
-                styles.userRow, 
-                isCurrentUser && styles.currentUserRow,
-                isLast && { borderBottomWidth: 0 }
-              ]}
-            >
-              {}
-              <View style={styles.rankContainer}>
-                <View style={[styles.rankBadge, { backgroundColor: getRankColor(user.rank) }]}>
-                  <Text style={[styles.rankText, { color: getRankTextColor(user.rank) }]}>
-                    #{user.rank}
-                  </Text>
-                </View>
-              </View>
-
-              {}
-              <View style={styles.nameContainer}>
-                <View style={[styles.avatar, isCurrentUser && styles.currentUserAvatar]}>
-                  <Feather name="user" size={16} color={isCurrentUser ? '#185B37' : '#9CA3AF'} />
-                </View>
-                <Text style={[styles.nameText, isCurrentUser && styles.currentUserText]}>
-                  {user.name}
-                </Text>
-              </View>
-
-              {}
-              <View style={styles.scoreContainer}>
-                <Text style={[styles.scoreText, isCurrentUser && styles.currentUserText]}>
-                  {user.score.toLocaleString()}
-                </Text>
-                <Feather 
-                  name={user.trend === 'up' ? 'trending-up' : user.trend === 'down' ? 'trending-down' : 'minus'} 
-                  size={16} 
-                  color={isCurrentUser ? '#A7F3D0' : user.trend === 'up' ? '#10B981' : '#9CA3AF'} 
-                  style={{ marginLeft: 8 }}
-                />
-              </View>
-            </View>
-          );
-        })}
       </View>
-
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F9FAFB' 
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
   },
   scrollContent: {
     padding: 24,
     paddingTop: 40,
-    maxWidth: 1000,
-    alignSelf: 'center',
+    maxWidth: 800,
     width: '100%',
+    alignSelf: 'center',
+    paddingBottom: 100,
   },
   topNav: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 40,
   },
   menuButton: {
@@ -147,150 +202,226 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  navRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  headerContainer: {
+    marginBottom: 32,
   },
-  iconButton: {
-    width: 40,
-    height: 40,
+  headerTitle: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 32,
+    color: '#111827',
+    marginBottom: 8,
+  },
+  headerSubtitle: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  filtersContainer: {
+    marginBottom: 32,
+  },
+  metricsTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  metricTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  metricTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  metricTabText: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  metricTabTextActive: {
+    color: '#111827',
+    fontFamily: 'Bricolage_600',
+  },
+  subjectsScroll: {
+    flexGrow: 0,
+  },
+  subjectsContainer: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  subjectChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  profileAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#9CA3AF',
-    justifyContent: 'center',
-    alignItems: 'center',
+  subjectChipActive: {
+    backgroundColor: '#111827',
+    borderColor: '#111827',
   },
-  headerContainer: { 
-    marginBottom: 32 
+  subjectChipText: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 14,
+    color: '#4B5563',
   },
-  headerTitle: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 32, 
-    color: '#111827', 
-    marginBottom: 8 
+  subjectChipTextActive: {
+    color: '#FFFFFF',
   },
-  headerSubtitle: { 
-    fontFamily: 'Bricolage_400', 
-    fontSize: 16, 
-    color: '#6B7280', 
-  },
-  boardCard: {
+  boardContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     padding: 24,
-  },
-  boardCardDesktop: {
-    padding: 32,
-  },
-  listHeaderRow: {
-    flexDirection: 'row',
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    marginBottom: 8,
-  },
-  columnHeaderRank: {
-    width: 60,
-    fontFamily: 'Bricolage_500',
-    fontSize: 13,
-    color: '#9CA3AF',
-    textTransform: 'uppercase',
-  },
-  columnHeaderName: {
-    flex: 1,
-    fontFamily: 'Bricolage_500',
-    fontSize: 13,
-    color: '#9CA3AF',
-    textTransform: 'uppercase',
-  },
-  columnHeaderScore: {
-    width: 100,
-    fontFamily: 'Bricolage_500',
-    fontSize: 13,
-    color: '#9CA3AF',
-    textTransform: 'uppercase',
-    textAlign: 'right',
-  },
-  userRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 16, 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#F3F4F6' 
-  },
-  currentUserRow: { 
-    backgroundColor: '#185B37', 
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    marginHorizontal: -16, 
-    borderBottomWidth: 0,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    marginVertical: 4,
+    shadowOpacity: 0.02,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  rankContainer: { 
-    width: 60,
+  podiumRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 40,
+    marginTop: 16,
+  },
+  podiumItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  podiumFirst: {
+    marginBottom: 16,
+    zIndex: 10,
+  },
+  podiumSecond: {
+    opacity: 0.9,
+  },
+  podiumThird: {
+    opacity: 0.8,
+  },
+  avatarWrapper: {
+    position: 'relative',
+    marginBottom: 12,
+  },
+  avatarImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3F4F6',
   },
   rankBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    position: 'absolute',
+    bottom: -6,
+    alignSelf: 'center',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  rankText: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 14, 
+  rankBadgeText: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 12,
+    color: '#FFFFFF',
   },
-  nameContainer: {
-    flex: 1,
+  podiumName: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 15,
+    color: '#111827',
+    marginBottom: 4,
+  },
+  podiumScore: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  listContainer: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingTop: 16,
+  },
+  listItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
   },
-  avatar: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
-    backgroundColor: '#F3F4F6', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginRight: 12 
+  listItemMe: {
+    backgroundColor: '#F9FAFB',
   },
-  currentUserAvatar: {
-    backgroundColor: '#FFFFFF',
+  listRank: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 15,
+    color: '#9CA3AF',
+    width: 32,
   },
-  nameText: { 
-    fontFamily: 'Bricolage_500', 
-    fontSize: 16, 
+  listAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#D1D5DB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    overflow: 'hidden',
+  },
+  listAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  listName: {
+    flex: 1,
+    fontFamily: 'Bricolage_500',
+    fontSize: 15,
+    color: '#374151',
+  },
+  listNameMe: {
+    fontFamily: 'Bricolage_600',
     color: '#111827',
   },
-  scoreContainer: {
-    width: 100,
+  listScore: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 15,
+    color: '#6B7280',
+  },
+  listScoreMe: {
+    color: '#185B37',
+  },
+  stickyFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  stickyContent: {
+    maxWidth: 800,
+    width: '100%',
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  scoreText: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 16, 
-    color: '#111827' 
-  },
-  currentUserText: { 
-    color: '#FFFFFF' 
   }
 });

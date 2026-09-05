@@ -9,6 +9,7 @@ export interface AIRequestOptions {
   solvePhase?: SolariSolvePhase;
   conversationHistory?: { sender: 'user' | 'ai'; content: string }[];
   folderContext?: string;
+  attachment?: { base64: string; mimeType: string };
 }
 
 const EDGE_FUNCTION_URL = 'https://wyivhhhhosokazyrovti.supabase.co/functions/v1/chat-completion';
@@ -18,7 +19,7 @@ export async function generateAIResponse(
   options: AIRequestOptions,
   onUpdate?: (fullText: string) => void 
 ): Promise<string> {
-  const { mode, model_id = 'gemini-3.5-flash-lite', conversationHistory = [], folderContext = '' } = options;
+  const { mode, model_id = 'gemini-3.5-flash-lite', conversationHistory = [], folderContext = '', attachment } = options;
 
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error || !session?.access_token) {
@@ -32,6 +33,7 @@ export async function generateAIResponse(
     model_id,
     solve_phase: options.solvePhase,
     folder_context: folderContext,
+    attachment,
   };
 
   return new Promise((resolve, reject) => {

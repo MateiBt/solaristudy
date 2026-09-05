@@ -2,175 +2,200 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   
-  
-  const [isLogin, setIsLogin] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  
-  
-  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   async function handleAuth() {
-    if (!email.trim() || !password.trim()) {
-      setErrorMsg('Please fill in all required fields.');
+    if (!email.trim()) {
+      setErrorMsg('Please enter an email address.');
       return;
     }
-    if (!isLogin && !fullName.trim()) {
-      setErrorMsg('Please provide your full name.');
+    if (!isResetting && !password.trim()) {
+      setErrorMsg('Please enter a password.');
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     setErrorMsg('');
+    setSuccessMsg('');
 
     try {
-      if (isLogin) {
-        
+      if (isResetting) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+        if (error) throw error;
+        setSuccessMsg('Password reset instructions sent to your email.');
+        setIsResetting(false);
+      } else if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: password.trim(),
+        });
+        if (error) throw error;
+        setSuccessMsg('Account created! Please check your email to verify.');
+      } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password: password.trim(),
         });
         if (error) throw error;
-        
-        
-      } else {
-        
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: password.trim(),
-          options: {
-            data: {
-              full_name: fullName.trim(),
-            },
-          },
-        });
-        if (error) throw error;
-        
-        
-        if (data.user && !data.session) {
-          setErrorMsg('');
-          alert('Account created! Please check your email to confirm your account before signing in.');
-          setIsLogin(true); 
-        }
+        router.replace('/');
       }
-    } catch (error: any) {
-      setErrorMsg(error.message || 'An error occurred during authentication.');
+    } catch (e: any) {
+      setErrorMsg(e.message || 'An unexpected error occurred.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.card}>
-        
-        {}
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={[styles.card, width > 600 && styles.cardDesktop]}>
         <View style={styles.header}>
-          <View style={styles.logoBox}>
-            <Feather name="hexagon" size={24} color="#FFFFFF" />
+          <View style={styles.iconBox}>
+            <Feather name="hexagon" size={28} color="#185B37" />
           </View>
-          <Text style={styles.brandTitle}>SolariStudy</Text>
+          <Text style={styles.title}>SolariStudy</Text>
+          <Text style={styles.subtitle}>
+            {isResetting 
+              ? "Reset your password" 
+              : isSignUp 
+                ? "Create your scholar account" 
+                : "Sign in to your account"}
+          </Text>
         </View>
 
-        {}
-        <Text style={styles.title}>{isLogin ? 'Welcome back' : 'Create an account'}</Text>
-        <Text style={styles.subtitle}>
-          {isLogin 
-            ? 'Sign in to access your study sessions and dashboard.' 
-            : 'Join SolariStudy to start mastering your topics.'}
-        </Text>
-
-        {}
-        {errorMsg ? (
+        {errorMsg !== '' && (
           <View style={styles.errorBox}>
             <Feather name="alert-circle" size={16} color="#EF4444" />
             <Text style={styles.errorText}>{errorMsg}</Text>
           </View>
-        ) : null}
+        )}
 
-        {}
+        {successMsg !== '' && (
+          <View style={styles.successBox}>
+            <Feather name="check-circle" size={16} color="#10B981" />
+            <Text style={styles.successText}>{successMsg}</Text>
+          </View>
+        )}
+
         <View style={styles.form}>
-          {!isLogin && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email Address</Text>
             <View style={styles.inputWrapper}>
-              <Feather name="user" size={18} color="#9CA3AF" style={styles.inputIcon} />
+              <Feather name="mail" size={18} color="#9CA3AF" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="Full Name"
+                placeholder="scholar@example.com"
                 placeholderTextColor="#9CA3AF"
-                value={fullName}
-                onChangeText={setFullName}
-                autoCapitalize="words"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                editable={!loading}
               />
+            </View>
+          </View>
+
+          {!isResetting && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <Feather name="lock" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor="#9CA3AF"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  editable={!loading}
+                />
+                <TouchableOpacity 
+                  style={styles.visibilityToggle} 
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Feather name={showPassword ? "eye-off" : "eye"} size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
-          <View style={styles.inputWrapper}>
-            <Feather name="mail" size={18} color="#9CA3AF" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email address"
-              placeholderTextColor="#9CA3AF"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
-
-          <View style={styles.inputWrapper}>
-            <Feather name="lock" size={18} color="#9CA3AF" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#9CA3AF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
+          {!isResetting && !isSignUp && (
+            <TouchableOpacity 
+              style={styles.forgotPassword} 
+              onPress={() => {
+                setIsResetting(true);
+                setErrorMsg('');
+                setSuccessMsg('');
+              }}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity 
-            style={[styles.submitButton, isLoading && { opacity: 0.7 }]} 
+            style={[styles.submitButton, loading && styles.submitButtonDisabled]}
             onPress={handleAuth}
-            disabled={isLoading}
+            disabled={loading}
           >
-            {isLoading ? (
+            {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.submitButtonText}>{isLogin ? 'Sign In' : 'Sign Up'}</Text>
+              <Text style={styles.submitButtonText}>
+                {isResetting ? "Send Reset Link" : isSignUp ? "Sign Up" : "Sign In"}
+              </Text>
             )}
           </TouchableOpacity>
         </View>
 
-        {}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            {isLogin ? "Don't have an account? " : "Already have an account? "}
-          </Text>
-          <TouchableOpacity onPress={() => {
-            setIsLogin(!isLogin);
-            setErrorMsg('');
-          }}>
-            <Text style={styles.footerLink}>{isLogin ? 'Sign up' : 'Sign in'}</Text>
-          </TouchableOpacity>
+          {isResetting ? (
+            <TouchableOpacity onPress={() => setIsResetting(false)}>
+              <Text style={styles.footerText}>
+                Remember your password? <Text style={styles.footerLink}>Sign in</Text>
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={() => {
+              setIsSignUp(!isSignUp);
+              setErrorMsg('');
+              setSuccessMsg('');
+            }}>
+              <Text style={styles.footerText}>
+                {isSignUp ? "Already have an account? " : "Don't have an account? "}
+                <Text style={styles.footerLink}>
+                  {isSignUp ? "Sign in" : "Sign up"}
+                </Text>
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
-
       </View>
     </KeyboardAvoidingView>
   );
@@ -179,7 +204,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F4F5F7',
+    backgroundColor: '#F9FAFB',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -187,35 +212,31 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
     width: '100%',
-    maxWidth: 400,
+    padding: 32,
     borderRadius: 24,
-    padding: 40,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.05,
     shadowRadius: 24,
-    elevation: 8,
+    elevation: 4,
+  },
+  cardDesktop: {
+    maxWidth: 440,
   },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 32,
-    justifyContent: 'center',
   },
-  logoBox: {
-    width: 40,
-    height: 40,
-    backgroundColor: '#185B37',
-    borderRadius: 12,
+  iconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#E6F0EB',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-  },
-  brandTitle: {
-    fontFamily: 'Bricolage_600',
-    fontSize: 22,
-    color: '#111827',
-    letterSpacing: -0.5,
+    marginBottom: 16,
   },
   title: {
     fontFamily: 'Bricolage_600',
@@ -227,8 +248,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Bricolage_400',
     fontSize: 15,
     color: '#6B7280',
-    marginBottom: 32,
-    lineHeight: 22,
   },
   errorBox: {
     flexDirection: 'row',
@@ -236,29 +255,54 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
     padding: 12,
     borderRadius: 12,
-    marginBottom: 24,
     borderWidth: 1,
     borderColor: '#FECACA',
+    marginBottom: 24,
+    gap: 8,
   },
   errorText: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 14,
-    color: '#EF4444',
-    marginLeft: 8,
     flex: 1,
+    fontFamily: 'Bricolage_500',
+    fontSize: 13,
+    color: '#EF4444',
+  },
+  successBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    marginBottom: 24,
+    gap: 8,
+  },
+  successText: {
+    flex: 1,
+    fontFamily: 'Bricolage_500',
+    fontSize: 13,
+    color: '#10B981',
   },
   form: {
-    gap: 16,
+    gap: 20,
+  },
+  inputGroup: {
+    gap: 8,
+  },
+  label: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 13,
+    color: '#4B5563',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: '#F9FAFB',
-    paddingHorizontal: 16,
     height: 52,
+    paddingHorizontal: 16,
   },
   inputIcon: {
     marginRight: 12,
@@ -268,26 +312,38 @@ const styles = StyleSheet.create({
     fontFamily: 'Bricolage_400',
     fontSize: 15,
     color: '#111827',
-    height: '100%',
     outlineStyle: 'none' as any,
+  },
+  visibilityToggle: {
+    padding: 4,
+  },
+  forgotPassword: {
+    alignSelf: 'flex-end',
+  },
+  forgotPasswordText: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 13,
+    color: '#185B37',
   },
   submitButton: {
     backgroundColor: '#185B37',
     height: 52,
-    borderRadius: 16,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
   },
+  submitButtonDisabled: {
+    opacity: 0.7,
+  },
   submitButtonText: {
     fontFamily: 'Bricolage_600',
-    fontSize: 16,
+    fontSize: 15,
     color: '#FFFFFF',
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
     marginTop: 32,
+    alignItems: 'center',
   },
   footerText: {
     fontFamily: 'Bricolage_400',
@@ -296,7 +352,6 @@ const styles = StyleSheet.create({
   },
   footerLink: {
     fontFamily: 'Bricolage_600',
-    fontSize: 14,
     color: '#185B37',
   },
 });

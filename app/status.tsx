@@ -1,25 +1,64 @@
 import { Feather } from '@expo/vector-icons';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
+} from 'react-native';
+import { getDashboardMetrics, getSubjectHubMetrics, getUserProfile } from '../lib/db';
+import { SUBJECT_LIST } from '../lib/subjects';
 
 export default function StatusScreen() {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
-  
-  const isDesktop = width > 900;
+  const isLargeScreen = width > 900;
 
-  const subjectProgress = [
-    { name: 'Physics', percent: 72, color: '#9B51E0', bgColor: '#F0E6FF', icon: 'aperture' },
-    { name: 'Mathematics', percent: 45, color: '#FF4D4D', bgColor: '#FFE8E8', icon: 'pie-chart' },
-    { name: 'Astronomy', percent: 15, color: '#2D9CDB', bgColor: '#E6F4FE', icon: 'moon' },
+  const [isLoading, setIsLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
+  const [globalMetrics, setGlobalMetrics] = useState<any>(null);
+  const [subjectMetrics, setSubjectMetrics] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    try {
+      setIsLoading(true);
+      const [userProfile, dashMetrics, hubMetrics] = await Promise.all([
+        getUserProfile(),
+        getDashboardMetrics(),
+        getSubjectHubMetrics()
+      ]);
+      setProfile(userProfile);
+      setGlobalMetrics(dashMetrics);
+      setSubjectMetrics(hubMetrics.subjectMetrics);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const mockWeeklyData = [
+    { day: 'Mon', hours: 1.2 },
+    { day: 'Tue', hours: 2.5 },
+    { day: 'Wed', hours: 1.8 },
+    { day: 'Thu', hours: 3.1 },
+    { day: 'Fri', hours: 0.5 },
+    { day: 'Sat', hours: 4.0 },
+    { day: 'Sun', hours: 2.2 },
   ];
+  const maxMockHours = 4.0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      
-      {}
       <View style={styles.topNav}>
         <TouchableOpacity 
           style={styles.menuButton} 
@@ -27,100 +66,127 @@ export default function StatusScreen() {
         >
           <Feather name="menu" size={24} color="#111827" />
         </TouchableOpacity>
-        
-        <View style={styles.searchContainer}>
-          <Feather name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-          <TextInput 
-            style={styles.searchInput}
-            placeholder="Search progress..."
-            placeholderTextColor="#9CA3AF"
-          />
-          <View style={styles.shortcutBadge}>
-            <Text style={styles.shortcutText}>⌘F</Text>
-          </View>
-        </View>
-
         <View style={styles.navRight}>
           <TouchableOpacity style={styles.iconButton}>
-            <Feather name="bell" size={20} color="#4B5563" />
+            <Feather name="share-2" size={20} color="#4B5563" />
           </TouchableOpacity>
-          <View style={styles.profileAvatar}>
-            <Feather name="user" size={18} color="#FFFFFF" />
-          </View>
         </View>
       </View>
 
-      {}
       <View style={styles.headerContainer}>
-        <Text style={styles.header}>My Progress</Text>
-        <Text style={styles.subtitle}>Track your learning journey and milestones.</Text>
+        <Text style={styles.headerTitle}>My Progress</Text>
+        <Text style={styles.headerSubtitle}>Track your learning milestones and focus distribution.</Text>
       </View>
 
-      {}
-      <View style={styles.statsRow}>
-        
-        {}
-        <View style={[styles.statCard, styles.statCardPrimary, isDesktop && styles.statCardDesktop]}>
-          <View style={styles.statHeaderRow}>
-            <Text style={styles.statTitleLight}>Total Hours Studied</Text>
-            <View style={styles.iconCircleLight}>
-              <Feather name="target" size={14} color="#185B37" />
-            </View>
-          </View>
-          <Text style={styles.statValueLight}>14h</Text>
-          <Text style={styles.statTrendLight}>On track for weekly goal</Text>
-        </View>
-
-        {}
-        <View style={[styles.statCard, isDesktop && styles.statCardDesktop]}>
-          <View style={styles.statHeaderRow}>
-            <Text style={styles.statTitleDark}>Current Rank</Text>
-            <View style={styles.iconCircleDark}>
-              <Feather name="award" size={14} color="#4B5563" />
-            </View>
-          </View>
-          <Text style={styles.statValueDark}>Level 4</Text>
-          <Text style={styles.statTrendDark}>Scholar Rank</Text>
-        </View>
-
-      </View>
-
-      {}
-      <Text style={styles.sectionTitle}>Subject Mastery</Text>
-      <View style={styles.masteryCard}>
-        {subjectProgress.map((subject, index) => {
-          const isLast = index === subjectProgress.length - 1;
-          
-          return (
-            <View key={subject.name} style={[styles.progressRow, isLast && { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
-              
-              <View style={[styles.subjectIconBox, { backgroundColor: subject.bgColor }]}>
-                <Feather name={subject.icon as any} size={20} color={subject.color} />
-              </View>
-
-              <View style={styles.progressDataContainer}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressTitle}>{subject.name}</Text>
-                  <Text style={[styles.progressPercent, { color: subject.color }]}>{subject.percent}%</Text>
-                </View>
-                <View style={styles.progressBarBackground}>
-                  <View style={[styles.progressBarFill, { width: `${subject.percent}%`, backgroundColor: subject.color }]} />
+      {isLoading ? (
+        <ActivityIndicator size="large" color="#185B37" style={{ marginTop: 40 }} />
+      ) : (
+        <>
+          <View style={styles.overviewGrid}>
+            <View style={[styles.statCard, isLargeScreen && styles.statCardDesktop]}>
+              <View style={styles.statCardHeader}>
+                <View style={[styles.statIconBox, { backgroundColor: '#E6F0EB' }]}>
+                  <Feather name="clock" size={18} color="#185B37" />
                 </View>
               </View>
-
+              <Text style={styles.statValue}>{globalMetrics?.totalFocusHours || '0.0'}<Text style={styles.statUnit}>h</Text></Text>
+              <Text style={styles.statLabel}>Total Focus Time</Text>
             </View>
-          );
-        })}
-      </View>
 
+            <View style={[styles.statCard, isLargeScreen && styles.statCardDesktop]}>
+              <View style={styles.statCardHeader}>
+                <View style={[styles.statIconBox, { backgroundColor: '#F3F4F6' }]}>
+                  <Feather name="check-circle" size={18} color="#4B5563" />
+                </View>
+              </View>
+              <Text style={styles.statValue}>{globalMetrics?.totalProblems || 0}</Text>
+              <Text style={styles.statLabel}>Problems Solved</Text>
+            </View>
+
+            <View style={[styles.statCard, isLargeScreen && styles.statCardDesktop]}>
+              <View style={styles.statCardHeader}>
+                <View style={[styles.statIconBox, { backgroundColor: '#FEF3C7' }]}>
+                  <Feather name="zap" size={18} color="#D97706" />
+                </View>
+              </View>
+              <Text style={styles.statValue}>{profile?.streak_count || 0}</Text>
+              <Text style={styles.statLabel}>Day Streak</Text>
+            </View>
+
+            <View style={[styles.statCard, isLargeScreen && styles.statCardDesktop]}>
+              <View style={styles.statCardHeader}>
+                <View style={[styles.statIconBox, { backgroundColor: '#EFF6FF' }]}>
+                  <Feather name="target" size={18} color="#2563EB" />
+                </View>
+              </View>
+              <Text style={styles.statValue}>{globalMetrics?.globalAccuracy || 0}<Text style={styles.statUnit}>%</Text></Text>
+              <Text style={styles.statLabel}>Global Accuracy</Text>
+            </View>
+          </View>
+
+          <View style={styles.sectionsRow}>
+            <View style={[styles.sectionCard, isLargeScreen && styles.sectionCardDesktop]}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Weekly Activity</Text>
+                <Text style={styles.sectionSubtitle}>Focus hours over the last 7 days</Text>
+              </View>
+              <View style={styles.chartContainer}>
+                {mockWeeklyData.map((data, index) => {
+                  const heightPercent = (data.hours / maxMockHours) * 100;
+                  return (
+                    <View key={index} style={styles.chartColumn}>
+                      <View style={styles.barWrapper}>
+                        <View style={[styles.barFill, { height: `${heightPercent}%` }]} />
+                      </View>
+                      <Text style={styles.chartDayLabel}>{data.day}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={[styles.sectionCard, isLargeScreen && styles.sectionCardDesktop]}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Subject Distribution</Text>
+                <Text style={styles.sectionSubtitle}>Time and engagement by topic</Text>
+              </View>
+              <View style={styles.distributionList}>
+                {SUBJECT_LIST.map(subject => {
+                  const stats = subjectMetrics[subject.id] || { hours: '0.0h', chats: 0 };
+                  const numericHours = parseFloat(stats.hours.replace('h', '')) || 0;
+                  const globalHours = parseFloat(globalMetrics?.totalFocusHours || '1');
+                  const fillPercent = globalHours > 0 ? (numericHours / globalHours) * 100 : 0;
+                  
+                  return (
+                    <View key={subject.id} style={styles.distributionRow}>
+                      <View style={[styles.distributionIcon, { backgroundColor: subject.bgColor }]}>
+                        <Feather name={subject.icon as any} size={16} color={subject.color} />
+                      </View>
+                      <View style={styles.distributionDetails}>
+                        <View style={styles.distHeaderRow}>
+                          <Text style={styles.distTitle}>{subject.name}</Text>
+                          <Text style={styles.distStats}>{stats.hours} • {stats.chats} sessions</Text>
+                        </View>
+                        <View style={styles.distTrack}>
+                          <View style={[styles.distFill, { width: `${Math.min(fillPercent, 100)}%`, backgroundColor: subject.color }]} />
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F9FAFB' 
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
   },
   scrollContent: {
     padding: 24,
@@ -135,7 +201,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 40,
-    gap: 16,
+    zIndex: 50,
   },
   menuButton: {
     padding: 8,
@@ -143,40 +209,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    height: 48,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    maxWidth: 500,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: 'Bricolage_400',
-    fontSize: 15,
-    color: '#111827',
-    outlineStyle: 'solid',
-    outlineColor: 'transparent',
-  },
-  shortcutBadge: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  shortcutText: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 12,
-    color: '#6B7280',
   },
   navRight: {
     flexDirection: 'row',
@@ -193,34 +225,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  profileAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#9CA3AF',
-    justifyContent: 'center',
-    alignItems: 'center',
+  headerContainer: {
+    marginBottom: 40,
   },
-  headerContainer: { 
-    marginBottom: 32 
+  headerTitle: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 32,
+    color: '#111827',
+    marginBottom: 8,
   },
-  header: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 32, 
-    color: '#111827', 
-    letterSpacing: -0.5, 
-    marginBottom: 8 
+  headerSubtitle: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 16,
+    color: '#6B7280',
   },
-  subtitle: { 
-    fontFamily: 'Bricolage_400', 
-    fontSize: 16, 
-    color: '#6B7280', 
-  },
-  statsRow: { 
-    flexDirection: 'row', 
+  overviewGrid: {
+    flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16, 
-    marginBottom: 40 
+    gap: 16,
+    marginBottom: 32,
   },
   statCard: {
     backgroundColor: '#FFFFFF',
@@ -229,126 +252,146 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    elevation: 1,
   },
   statCardDesktop: {
     flex: 1,
-    minWidth: 200,
+    minWidth: 220,
   },
-  statCardPrimary: {
-    backgroundColor: '#185B37',
-    borderColor: '#185B37',
-  },
-  statHeaderRow: {
+  statCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  statTitleLight: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 15,
-    color: '#E6F0EB',
-  },
-  statTitleDark: {
-    fontFamily: 'Bricolage_500',
-    fontSize: 15,
-    color: '#4B5563',
-  },
-  iconCircleLight: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
+  statIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconCircleDark: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statValueLight: {
+  statValue: {
     fontFamily: 'Bricolage_600',
-    fontSize: 48,
-    color: '#FFFFFF',
-    lineHeight: 56,
-    marginBottom: 8,
-  },
-  statValueDark: {
-    fontFamily: 'Bricolage_600',
-    fontSize: 48,
+    fontSize: 40,
     color: '#111827',
-    lineHeight: 56,
-    marginBottom: 8,
+    lineHeight: 48,
+    marginBottom: 4,
   },
-  statTrendLight: {
-    fontFamily: 'Bricolage_400',
-    fontSize: 13,
-    color: '#A7F3D0',
+  statUnit: {
+    fontSize: 20,
+    color: '#6B7280',
   },
-  statTrendDark: {
-    fontFamily: 'Bricolage_400',
-    fontSize: 13,
-    color: '#9CA3AF',
+  statLabel: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 14,
+    color: '#6B7280',
   },
-  sectionTitle: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 20, 
-    color: '#111827', 
-    marginBottom: 16 
+  sectionsRow: {
+    flexDirection: 'column',
+    gap: 24,
   },
-  masteryCard: {
+  sectionCard: {
     backgroundColor: '#FFFFFF',
     padding: 24,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    width: '100%',
   },
-  progressRow: {
+  sectionCardDesktop: {
+    flex: 1,
+  },
+  sectionHeader: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 20,
+    color: '#111827',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontFamily: 'Bricolage_400',
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  chartContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 200,
+    paddingTop: 16,
+  },
+  chartColumn: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  barWrapper: {
+    width: 32,
+    height: 140,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    justifyContent: 'flex-end',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  barFill: {
+    width: '100%',
+    backgroundColor: '#185B37',
+    borderRadius: 8,
+  },
+  chartDayLabel: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  distributionList: {
+    gap: 20,
+  },
+  distributionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
-  subjectIconBox: {
-    width: 48,
-    height: 48,
+  distributionIcon: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
-  progressDataContainer: {
+  distributionDetails: {
     flex: 1,
   },
-  progressHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
+  distHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12 
+    marginBottom: 8,
   },
-  progressTitle: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 16, 
-    color: '#111827', 
+  distTitle: {
+    fontFamily: 'Bricolage_600',
+    fontSize: 15,
+    color: '#111827',
   },
-  progressPercent: { 
-    fontFamily: 'Bricolage_600', 
-    fontSize: 16, 
+  distStats: {
+    fontFamily: 'Bricolage_500',
+    fontSize: 13,
+    color: '#6B7280',
   },
-  progressBarBackground: { 
-    height: 8, 
-    backgroundColor: '#F3F4F6', 
-    borderRadius: 4, 
-    overflow: 'hidden' 
+  distTrack: {
+    height: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 4,
+    overflow: 'hidden',
   },
-  progressBarFill: { 
-    height: '100%', 
-    borderRadius: 4 
+  distFill: {
+    height: '100%',
+    borderRadius: 4,
   }
 });

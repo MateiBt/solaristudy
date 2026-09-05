@@ -18,7 +18,7 @@ import {
 import Markdown from 'react-native-markdown-display';
 import { WebView } from 'react-native-webview';
 import { generateAIResponse } from '../../lib/ai';
-import { createFolder, createSession, deleteSession, getFolders, getSessions, updateSessionState, updateSolveStage } from '../../lib/db';
+import { createFolder, createSession, deleteSession, getFolders, getSessions, saveOcrExtraction, toggleMessageAccuracy, updateSessionState, updateSolveStage } from '../../lib/db';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage, ChatSession, SessionMode, SolveStage, StudyFolder } from '../../lib/types';
 
@@ -339,7 +339,8 @@ export default function ChatScreen() {
          user_id: activeSession.user_id,
          sender: 'ai',
          content: contentMsg,
-         status: 'completed'
+         status: 'completed',
+         include_in_accuracy: false
        }]).select().single().then(({ data }) => {
          if (data) setMessages(prev => prev.map(m => m.id === tempMsgId ? data as ChatMessage : m));
        });
@@ -366,7 +367,7 @@ export default function ChatScreen() {
           subjectId, 
           currentFolderId, 
           activeMode, 
-          'gemini-3.5-flash-lite', 
+          'gemini-1.5-flash', 
           undefined, 
           selectedTopic && selectedTopic !== 'Other topics' ? selectedTopic : null
         );
@@ -414,7 +415,7 @@ export default function ChatScreen() {
       });
 
       if (!sessionToUse.title_confirmed) {
-        const hint = rawInputText ? rawInputText.split(' ')[0] : 'Image';
+        const hint = rawInputText ? rawInputText.split(' ')[0] : 'Session';
         setSuggestedTitle(`Understanding ${hint.charAt(0).toUpperCase() + hint.slice(1)}`);
         setCustomTitle('');
         setShowTitleModal(true);
@@ -441,9 +442,21 @@ export default function ChatScreen() {
         model_id: sessionToUse.model_id,
         solvePhase: activeMode === 'SolariSolve' ? solvePhase : undefined,
         conversationHistory: messages.map(m => ({ sender: m.sender as 'user' | 'ai', content: m.content })),
+        attachment: currentAttachment ? { base64: currentAttachment.base64, mimeType: currentAttachment.mimeType } : undefined
       }, (streamedText) => {
         setMessages(prev => prev.map(m => m.id === tempAiMsgId ? { ...m, content: streamedText } : m));
       });
+
+      let finalAiText = aiResponseText;
+      let scoreEarned: number | null = null;
+      let scorePossible: number | null = null;
+
+      const scoreMatch = finalAiText.match(/SCORE:\[(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\]/);
+      if (scoreMatch) {
+        scoreEarned = parseFloat(scoreMatch[1]);
+        scorePossible = parseFloat(scoreMatch[2]);
+        finalAiText = finalAiText.replace(scoreMatch[0], '').trim();
+      }
 
       if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems') {
         setSolvePhase('focus_timer');
@@ -456,14 +469,21 @@ export default function ChatScreen() {
           session_id: sessionToUse.id,
           user_id: sessionToUse.user_id,
           sender: 'ai',
-          content: aiResponseText,
-          status: 'completed'
+          content: finalAiText,
+          status: 'completed',
+          score_earned: scoreEarned,
+          score_possible: scorePossible,
+          include_in_accuracy: scorePossible !== null
         }])
         .select()
         .single();
         
       if (!aiError && insertedAiMsg) {
         setMessages(prev => prev.map(m => m.id === tempAiMsgId ? insertedAiMsg as ChatMessage : m));
+        
+        if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems' && currentAttachment) {
+          await saveOcrExtraction(insertedAiMsg.id, finalAiText, currentAttachment.uri);
+        }
       }
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
@@ -471,6 +491,16 @@ export default function ChatScreen() {
       console.error(error);
     } finally {
       setIsSending(false);
+    }
+  }
+
+  async function handleToggleAccuracy(message: ChatMessage) {
+    try {
+      const newStatus = !message.include_in_accuracy;
+      await toggleMessageAccuracy(message.id, newStatus);
+      setMessages(prev => prev.map(m => m.id === message.id ? { ...m, include_in_accuracy: newStatus } : m));
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -909,7 +939,7 @@ export default function ChatScreen() {
               <View style={styles.modelBadge}>
                 <Feather name="zap" size={10} color="#185B37" style={{ marginRight: 4 }} />
                 <Text style={styles.modelBadgeText}>
-                  {activeSession ? `[${activeSession.mode === 'SolariSolve' ? 'Solve' : 'Learn'}] • ` : ''}Gemini 3.5 Flash Lite
+                  {activeSession ? `[${activeSession.mode === 'SolariSolve' ? 'Solve' : 'Learn'}] • ` : ''}Gemini 1.5 Flash
                 </Text>
               </View>
             </View>
@@ -964,30 +994,52 @@ export default function ChatScreen() {
                   contentContainerStyle={styles.scrollContent}
                   onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
                 >
-                  {messages.map((msg, idx) => (
-                    <View key={msg.id || idx.toString()} style={[styles.chatBubbleContainer, msg.sender === 'user' ? styles.userBubbleContainer : styles.aiBubbleContainer]}>
-                      {msg.sender === 'ai' && (
-                        <View style={styles.avatarContainer}>
-                          <Feather name="cpu" size={18} color="#FFFFFF" />
-                        </View>
-                      )}
-                      <View style={[styles.bubbleContent, msg.sender === 'user' ? styles.userBubble : styles.aiBubble]}>
-                        {msg.sender === 'user' ? (
-                          <Text style={[styles.bubbleText, styles.userBubbleText]}>
-                            {msg.content}
-                          </Text>
-                        ) : (
-                          msg.id?.startsWith('temp-') ? (
-                            <Text style={[styles.bubbleText, { color: '#111827' }]}>
-                              {msg.content || '...'} 
+                  {messages.map((msg, idx) => {
+                    const displayContent = msg.content.replace(/SCORE:\[\d+(?:\.\d+)?\/\d+(?:\.\d+)?\]/, '').trim();
+                    return (
+                      <View key={msg.id || idx.toString()} style={[styles.chatBubbleContainer, msg.sender === 'user' ? styles.userBubbleContainer : styles.aiBubbleContainer]}>
+                        {msg.sender === 'ai' && (
+                          <View style={styles.avatarContainer}>
+                            <Feather name="cpu" size={18} color="#FFFFFF" />
+                          </View>
+                        )}
+                        <View style={[styles.bubbleContent, msg.sender === 'user' ? styles.userBubble : styles.aiBubble]}>
+                          {msg.sender === 'user' ? (
+                            <Text style={[styles.bubbleText, styles.userBubbleText]}>
+                              {displayContent}
                             </Text>
                           ) : (
-                            <MathBubble content={msg.content} />
-                          )
-                        )}
+                            msg.id?.startsWith('temp-') ? (
+                              <Text style={[styles.bubbleText, { color: '#111827' }]}>
+                                {displayContent || '...'} 
+                              </Text>
+                            ) : (
+                              <>
+                                <MathBubble content={displayContent} />
+                                {msg.score_possible !== null && (
+                                  <View style={styles.scoreBadgeContainer}>
+                                    <View style={styles.scoreBadge}>
+                                      <Feather name="award" size={14} color="#185B37" />
+                                      <Text style={styles.scoreText}>Score: {msg.score_earned} / {msg.score_possible}</Text>
+                                    </View>
+                                    <TouchableOpacity 
+                                      style={[styles.accuracyToggle, !msg.include_in_accuracy && styles.accuracyToggleOff]} 
+                                      onPress={() => handleToggleAccuracy(msg)}
+                                    >
+                                      <Feather name={msg.include_in_accuracy ? "check-circle" : "circle"} size={14} color={msg.include_in_accuracy ? "#185B37" : "#9CA3AF"} />
+                                      <Text style={[styles.accuracyToggleText, !msg.include_in_accuracy && { color: '#9CA3AF' }]}>
+                                        {msg.include_in_accuracy ? "Counts toward stats" : "Excluded from stats"}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                )}
+                              </>
+                            )
+                          )}
+                        </View>
                       </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </ScrollView>
 
                 <View style={styles.bottomInputZone}>
@@ -1165,4 +1217,11 @@ const styles = StyleSheet.create({
   bubbleText: { fontFamily: 'Bricolage_400', fontSize: 15, lineHeight: 24 },
   userBubbleText: { color: '#111827' },
   avatarContainer: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#185B37', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  
+  scoreBadgeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E5E7EB', gap: 12 },
+  scoreBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E6F0EB', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, gap: 6 },
+  scoreText: { fontFamily: 'Bricolage_600', fontSize: 13, color: '#185B37' },
+  accuracyToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 8 },
+  accuracyToggleOff: { opacity: 0.6 },
+  accuracyToggleText: { fontFamily: 'Bricolage_500', fontSize: 12, color: '#185B37' }
 });
