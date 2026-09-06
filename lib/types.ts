@@ -50,10 +50,23 @@ export interface ChatMessage {
 
 export interface UserProfile {
   id: string;
+  display_name: string | null;
+  avatar_url: string | null;
   streak_count: number;
   last_active_date: string | null;
   unlocked_badges: string[];
+  total_problems_solved: number;
+  global_accuracy: number;
   created_at: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  rank: number;
+  display_name: string;
+  avatar_url: string | null;
+  total_problems_solved: number;
+  global_accuracy: number;
 }
 
 export interface SessionFilters {

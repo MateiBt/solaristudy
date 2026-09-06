@@ -4,10 +4,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +29,115 @@ const PHYSICS_TOPICS = [
   'Statistical Physics', 'Condensed Matter', 'General Relativity', 
   'Optics', 'Quantum Field Theory', 'Other topics'
 ];
+
+interface AttachmentPickerProps {
+  visible: boolean;
+  onClose: () => void;
+  onImageSelected: (uri: string, base64: string, mimeType: string) => void;
+}
+
+const AttachmentModal = ({ visible, onClose, onImageSelected }: AttachmentPickerProps) => {
+  const [loading, setLoading] = useState(false);
+
+  async function handleLaunchCamera() {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Camera access is required to photograph problem sets.');
+        return;
+      }
+
+      setLoading(true);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]?.base64) {
+        const asset = result.assets[0];
+        const base64 = asset.base64;
+        if (!base64) return;
+        const mimeType = asset.mimeType || 'image/jpeg';
+        onImageSelected(asset.uri, base64, mimeType);
+        onClose();
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not capture image.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLaunchLibrary() {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Photo library access is required to select problem files.');
+        return;
+      }
+
+      setLoading(true);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]?.base64) {
+        const asset = result.assets[0];
+        const mimeType = asset.mimeType || 'image/jpeg';
+        onImageSelected(asset.uri, asset.base64!, mimeType);
+        onClose();
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not pick image.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.amBackdrop} onPress={onClose}>
+        <Pressable style={styles.amSheetContainer} onPress={(e) => e.stopPropagation()}>
+          <Text style={styles.amSheetTitle}>Attach Problem Source</Text>
+          <Text style={styles.amSheetSubtitle}>Upload or snap an image to run OCR & problem extraction</Text>
+
+          <View style={styles.amOptionsList}>
+            <TouchableOpacity style={styles.amOptionButton} onPress={handleLaunchCamera} disabled={loading}>
+              <View style={[styles.amIconBox, { backgroundColor: '#E6F0EB' }]}>
+                <Feather name="camera" size={20} color="#185B37" />
+              </View>
+              <View style={styles.amOptionContent}>
+                <Text style={styles.amOptionTitle}>Take Photo</Text>
+                <Text style={styles.amOptionDesc}>Capture a worksheet or whiteboard</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.amOptionButton} onPress={handleLaunchLibrary} disabled={loading}>
+              <View style={[styles.amIconBox, { backgroundColor: '#EFF6FF' }]}>
+                <Feather name="image" size={20} color="#2563EB" />
+              </View>
+              <View style={styles.amOptionContent}>
+                <Text style={styles.amOptionTitle}>Choose from Library</Text>
+                <Text style={styles.amOptionDesc}>Select a saved document or screenshot</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.amCancelButton} onPress={onClose} disabled={loading}>
+            <Text style={styles.amCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+};
 
 const MathBubble = ({ content }: { content: string }) => {
   const [height, setHeight] = useState(40);
@@ -69,7 +180,7 @@ const MathBubble = ({ content }: { content: string }) => {
     <body>
       <div id="content"></div>
       <script>
-        document.getElementById('content').innerHTML = marked.parse(${JSON.stringify(content)});
+        document.getElementById('content').innerHTML = marked.parse(${JSON.stringify(content || '')});
         
         renderMathInElement(document.body, {
           delimiters: [
@@ -133,6 +244,7 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [attachment, setAttachment] = useState<{ uri: string, base64: string, mimeType: string } | null>(null);
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null); 
 
   const [activeMode, setActiveMode] = useState<SessionMode>('SolariLearn');
@@ -163,8 +275,8 @@ export default function ChatScreen() {
   }, [subjectId, currentFolderId]);
 
   useEffect(() => {
-    if (activeSession) {
-      loadMessages(activeSession.id);
+    if (activeSession && activeSession.id) {
+      loadMessages(activeSession.id as string);
       setActiveMode(activeSession.mode || 'SolariLearn');
       setSolvePhase(activeSession.solve_stage || 'ingest_problems');
       setSelectedTopic(activeSession.topic || null); 
@@ -193,11 +305,11 @@ export default function ChatScreen() {
   async function loadSidebarData() {
     try {
       setIsLoadingSidebar(true);
-      const targetFolderId = currentFolderId || (paramFolderId ? paramFolderId.toString() : null);
+      const targetFolderId = currentFolderId ?? (paramFolderId ? paramFolderId.toString() : null);
       
       const [fetchedFolders, fetchedSessions] = await Promise.all([
-        getFolders(subjectId, targetFolderId),
-        getSessions(subjectId, targetFolderId)
+        getFolders(subjectId, targetFolderId as string | null),
+        getSessions(subjectId, targetFolderId as string | null)
       ]);
       
       setFolders(fetchedFolders);
@@ -208,7 +320,7 @@ export default function ChatScreen() {
         if (targetSession) {
           setActiveSession(targetSession);
         }
-      } else if (!activeSession && targetFolderId === null && fetchedSessions.length > 0 && !paramSessionId) {
+      } else if (!activeSession && !targetFolderId && fetchedSessions.length > 0 && !paramSessionId) {
           const unarchived = fetchedSessions.filter(s => !s.is_archived);
           if (unarchived.length > 0) setActiveSession(unarchived[0]);
       }
@@ -232,7 +344,7 @@ export default function ChatScreen() {
       setMessages(prev => {
         const fetchedMsgs = data || [];
         const dbIds = new Set(fetchedMsgs.map(m => m.id));
-        const tempMsgs = prev.filter(m => String(m.id).startsWith('temp-') && !dbIds.has(m.id));
+        const tempMsgs = prev.filter(m => m.id && String(m.id).startsWith('temp-') && !dbIds.has(m.id));
         return [...fetchedMsgs, ...tempMsgs];
       });
     } catch (error) {
@@ -243,7 +355,7 @@ export default function ChatScreen() {
   async function handleCreateFolder() {
     if (!newFolderName.trim()) return;
     try {
-      const newFolder = await createFolder(subjectId, newFolderName.trim(), currentFolderId);
+      const newFolder = await createFolder(subjectId, newFolderName.trim(), currentFolderId as string | null);
       setFolders(prev => [...prev, newFolder]);
       setShowFolderModal(false);
       setNewFolderName('');
@@ -253,8 +365,8 @@ export default function ChatScreen() {
   }
 
   function handleNavigateToFolder(folder: StudyFolder) {
-    setFolderStack(prev => [...prev, { id: folder.id, name: folder.name }]);
-    setCurrentFolderId(folder.id);
+    setFolderStack(prev => [...prev, { id: folder.id as string, name: folder.name }]);
+    setCurrentFolderId(folder.id as string);
   }
 
   function handleNavigateBack() {
@@ -272,34 +384,13 @@ export default function ChatScreen() {
     setFocusTimerStatus('idle');
   }
 
-  async function handleAttachImage() {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        base64: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0].base64) {
-        setAttachment({
-          uri: result.assets[0].uri,
-          base64: result.assets[0].base64,
-          mimeType: result.assets[0].mimeType || 'image/jpeg'
-        });
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
   async function handleStartFocus(minutes: number) {
     const totalSeconds = minutes * 60;
     setInitialFocusSeconds(totalSeconds);
     setTimeRemaining(totalSeconds);
     setFocusTimerStatus('running');
-    if (activeSession) {
-       await updateSolveStage(activeSession.id, 'focus_timer', { startedAt: new Date().toISOString(), duration: totalSeconds });
+    if (activeSession && activeSession.id) {
+       await updateSolveStage(activeSession.id as string, 'focus_timer', { startedAt: new Date().toISOString(), duration: totalSeconds });
     }
   }
 
@@ -308,21 +399,21 @@ export default function ChatScreen() {
     setFocusTimerStatus('idle');
     setSolvePhase('grading_and_review');
     
-    if (activeSession) {
+    if (activeSession && activeSession.id) {
        const newTotalActualSeconds = (activeSession.actual_focus_seconds || 0) + actualSecondsSpent;
        
-       await updateSolveStage(activeSession.id, 'grading_and_review', { 
+       await updateSolveStage(activeSession.id as string, 'grading_and_review', { 
          completedAt: new Date().toISOString(),
          actualFocusSeconds: newTotalActualSeconds
        });
        
        const contentMsg = "Focus session complete! 🎯 Submit your answers or workings whenever you're ready for grading.";
-       
        const tempMsgId = 'sys-' + Date.now();
+       
        setMessages(prev => [...prev, {
          id: tempMsgId,
-         session_id: activeSession.id,
-         user_id: activeSession.user_id,
+         session_id: activeSession.id as string,
+         user_id: activeSession.user_id as string,
          sender: 'ai',
          content: contentMsg,
          status: 'completed',
@@ -335,8 +426,8 @@ export default function ChatScreen() {
        }]);
 
        supabase.from('chat_messages').insert([{
-         session_id: activeSession.id,
-         user_id: activeSession.user_id,
+         session_id: activeSession.id as string,
+         user_id: activeSession.user_id as string,
          sender: 'ai',
          content: contentMsg,
          status: 'completed',
@@ -365,7 +456,7 @@ export default function ChatScreen() {
       if (!sessionToUse) {
         sessionToUse = await createSession(
           subjectId, 
-          currentFolderId, 
+          currentFolderId as string | null, 
           activeMode, 
           'gemini-1.5-flash', 
           undefined, 
@@ -374,7 +465,7 @@ export default function ChatScreen() {
         setSessions(prev => [sessionToUse!, ...prev]);
         setActiveSession(sessionToUse);
       }
-      if (!sessionToUse) throw new Error("Failed to initialize session.");
+      if (!sessionToUse || !sessionToUse.id) throw new Error("Failed to initialize session.");
 
       let aiPromptText = rawInputText;
       if (messages.length === 0 && selectedTopic && selectedTopic !== 'Other topics') {
@@ -388,8 +479,8 @@ export default function ChatScreen() {
       const tempUserMsgId = 'temp-user-' + Date.now();
       setMessages(prev => [...prev, {
         id: tempUserMsgId,
-        session_id: sessionToUse.id,
-        user_id: sessionToUse.user_id,
+        session_id: sessionToUse.id as string,
+        user_id: sessionToUse.user_id as string,
         sender: 'user',
         content: displayContent,
         status: 'completed',
@@ -403,8 +494,8 @@ export default function ChatScreen() {
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
       supabase.from('chat_messages').insert([{
-        session_id: sessionToUse.id,
-        user_id: sessionToUse.user_id,
+        session_id: sessionToUse.id as string,
+        user_id: sessionToUse.user_id as string,
         sender: 'user',
         content: displayContent,
         status: 'completed'
@@ -424,8 +515,8 @@ export default function ChatScreen() {
       const tempAiMsgId = 'temp-ai-' + Date.now();
       setMessages(prev => [...prev, {
         id: tempAiMsgId,
-        session_id: sessionToUse.id,
-        user_id: sessionToUse.user_id,
+        session_id: sessionToUse.id as string,
+        user_id: sessionToUse.user_id as string,
         sender: 'ai',
         content: '',
         status: 'streaming',
@@ -439,9 +530,9 @@ export default function ChatScreen() {
 
       const aiResponseText = await generateAIResponse(aiPromptText, {
         mode: activeMode,
-        model_id: sessionToUse.model_id,
+        model_id: sessionToUse.model_id || 'gemini-1.5-flash',
         solvePhase: activeMode === 'SolariSolve' ? solvePhase : undefined,
-        conversationHistory: messages.map(m => ({ sender: m.sender as 'user' | 'ai', content: m.content })),
+        conversationHistory: messages.map(m => ({ sender: m.sender as 'user' | 'ai', content: m.content || '' })),
         attachment: currentAttachment ? { base64: currentAttachment.base64, mimeType: currentAttachment.mimeType } : undefined
       }, (streamedText) => {
         setMessages(prev => prev.map(m => m.id === tempAiMsgId ? { ...m, content: streamedText } : m));
@@ -460,14 +551,14 @@ export default function ChatScreen() {
 
       if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems') {
         setSolvePhase('focus_timer');
-        await updateSolveStage(sessionToUse.id, 'focus_timer');
+        await updateSolveStage(sessionToUse.id as string, 'focus_timer');
       }
 
       const { data: insertedAiMsg, error: aiError } = await supabase
         .from('chat_messages')
         .insert([{
-          session_id: sessionToUse.id,
-          user_id: sessionToUse.user_id,
+          session_id: sessionToUse.id as string,
+          user_id: sessionToUse.user_id as string,
           sender: 'ai',
           content: finalAiText,
           status: 'completed',
@@ -481,8 +572,8 @@ export default function ChatScreen() {
       if (!aiError && insertedAiMsg) {
         setMessages(prev => prev.map(m => m.id === tempAiMsgId ? insertedAiMsg as ChatMessage : m));
         
-        if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems' && currentAttachment) {
-          await saveOcrExtraction(insertedAiMsg.id, finalAiText, currentAttachment.uri);
+        if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems' && currentAttachment && insertedAiMsg.id) {
+          await saveOcrExtraction(insertedAiMsg.id as string, finalAiText, currentAttachment.uri);
         }
       }
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
@@ -495,9 +586,10 @@ export default function ChatScreen() {
   }
 
   async function handleToggleAccuracy(message: ChatMessage) {
+    if (!message.id) return;
     try {
       const newStatus = !message.include_in_accuracy;
-      await toggleMessageAccuracy(message.id, newStatus);
+      await toggleMessageAccuracy(message.id as string, newStatus);
       setMessages(prev => prev.map(m => m.id === message.id ? { ...m, include_in_accuracy: newStatus } : m));
     } catch (error) {
       console.error(error);
@@ -505,10 +597,10 @@ export default function ChatScreen() {
   }
 
   async function handleConfirmTitle(titleToSave: string) {
-    if (!activeSession || !titleToSave.trim()) return;
+    if (!activeSession || !activeSession.id || !titleToSave.trim()) return;
     try {
       const finalTitle = titleToSave.trim();
-      await updateSessionState(activeSession.id, { title: finalTitle, title_confirmed: true });
+      await updateSessionState(activeSession.id as string, { title: finalTitle, title_confirmed: true });
       const updatedSession = { ...activeSession, title: finalTitle, title_confirmed: true };
       setActiveSession(updatedSession);
       setSessions(prev => prev.map(s => s.id === activeSession.id ? updatedSession : s));
@@ -532,12 +624,12 @@ export default function ChatScreen() {
   }
 
   async function handleClearChat() {
-    if (!sessionToEdit) return;
+    if (!sessionToEdit || !sessionToEdit.id) return;
     try {
       const { error } = await supabase
         .from('chat_messages')
         .delete()
-        .eq('session_id', sessionToEdit.id);
+        .eq('session_id', sessionToEdit.id as string);
       
       if (error) throw error;
       
@@ -553,10 +645,10 @@ export default function ChatScreen() {
   }
 
   async function handleToggleFavorite() {
-    if (!sessionToEdit) return;
+    if (!sessionToEdit || !sessionToEdit.id) return;
     const newStatus = !sessionToEdit.is_favorited;
     try {
-      await updateSessionState(sessionToEdit.id, { is_favorited: newStatus });
+      await updateSessionState(sessionToEdit.id as string, { is_favorited: newStatus });
       setSessions(prev => prev.map(s => s.id === sessionToEdit.id ? { ...s, is_favorited: newStatus } : s));
       if (activeSession?.id === sessionToEdit.id) {
         setActiveSession({ ...activeSession, is_favorited: newStatus });
@@ -569,9 +661,9 @@ export default function ChatScreen() {
   }
 
   async function handleArchiveSession() {
-    if (!sessionToEdit) return;
+    if (!sessionToEdit || !sessionToEdit.id) return;
     try {
-      await updateSessionState(sessionToEdit.id, { is_archived: true });
+      await updateSessionState(sessionToEdit.id as string, { is_archived: true });
       setSessions(prev => prev.map(s => s.id === sessionToEdit.id ? { ...s, is_archived: true } : s));
       if (activeSession?.id === sessionToEdit.id) setActiveSession(null);
     } catch (error) {
@@ -582,9 +674,9 @@ export default function ChatScreen() {
   }
 
   async function handleDeleteSession() {
-    if (!sessionToEdit) return;
+    if (!sessionToEdit || !sessionToEdit.id) return;
     try {
-      await deleteSession(sessionToEdit.id);
+      await deleteSession(sessionToEdit.id as string);
       setSessions(prev => prev.filter(s => s.id !== sessionToEdit.id));
       if (activeSession?.id === sessionToEdit.id) setActiveSession(null);
     } catch (error) {
@@ -693,7 +785,7 @@ export default function ChatScreen() {
       </View>
 
       <View style={styles.inputBox}>
-        <TouchableOpacity style={styles.attachButton} onPress={handleAttachImage}>
+        <TouchableOpacity style={styles.attachButton} onPress={() => setShowAttachmentModal(true)}>
           <Feather name="paperclip" size={20} color={attachment ? "#185B37" : "#9CA3AF"} />
         </TouchableOpacity>
         
@@ -852,6 +944,12 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </Modal>
 
+      <AttachmentModal 
+        visible={showAttachmentModal}
+        onClose={() => setShowAttachmentModal(false)}
+        onImageSelected={(uri, base64, mimeType) => setAttachment({ uri, base64, mimeType })}
+      />
+
       <View style={styles.leftSidebar}>
         <View style={styles.sidebarHeaderRow}>
           {currentFolderId ? (
@@ -995,7 +1093,7 @@ export default function ChatScreen() {
                   onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
                 >
                   {messages.map((msg, idx) => {
-                    const displayContent = msg.content.replace(/SCORE:\[\d+(?:\.\d+)?\/\d+(?:\.\d+)?\]/, '').trim();
+                    const displayContent = (msg.content || '').replace(/SCORE:\[\d+(?:\.\d+)?\/\d+(?:\.\d+)?\]/, '').trim();
                     return (
                       <View key={msg.id || idx.toString()} style={[styles.chatBubbleContainer, msg.sender === 'user' ? styles.userBubbleContainer : styles.aiBubbleContainer]}>
                         {msg.sender === 'ai' && (
@@ -1223,5 +1321,18 @@ const styles = StyleSheet.create({
   scoreText: { fontFamily: 'Bricolage_600', fontSize: 13, color: '#185B37' },
   accuracyToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 8 },
   accuracyToggleOff: { opacity: 0.6 },
-  accuracyToggleText: { fontFamily: 'Bricolage_500', fontSize: 12, color: '#185B37' }
+  accuracyToggleText: { fontFamily: 'Bricolage_500', fontSize: 12, color: '#185B37' },
+
+  amBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.45)', justifyContent: 'flex-end', alignItems: 'center' },
+  amSheetContainer: { width: '100%', maxWidth: 520, backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24 },
+  amSheetTitle: { fontFamily: 'Bricolage_600', fontSize: 20, color: '#111827', marginBottom: 4 },
+  amSheetSubtitle: { fontFamily: 'Bricolage_400', fontSize: 14, color: '#6B7280', marginBottom: 20 },
+  amOptionsList: { gap: 12 },
+  amOptionButton: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
+  amIconBox: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  amOptionContent: { flex: 1 },
+  amOptionTitle: { fontFamily: 'Bricolage_600', fontSize: 15, color: '#111827', marginBottom: 2 },
+  amOptionDesc: { fontFamily: 'Bricolage_400', fontSize: 13, color: '#6B7280' },
+  amCancelButton: { marginTop: 16, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F3F4F6' },
+  amCancelText: { fontFamily: 'Bricolage_600', fontSize: 15, color: '#4B5563' }
 });

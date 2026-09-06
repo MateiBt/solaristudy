@@ -1,5 +1,15 @@
 import { supabase } from './supabase';
-import { ChatSession, MessageStatus, SearchResult, SessionFilters, SessionMode, SolveStage, StudyFolder, UserProfile } from './types';
+import {
+  ChatSession,
+  LeaderboardEntry,
+  MessageStatus,
+  SearchResult,
+  SessionFilters,
+  SessionMode,
+  SolveStage,
+  StudyFolder,
+  UserProfile
+} from './types';
 
 export async function getUserProfile(): Promise<UserProfile | null> {
   const { data: user } = await supabase.auth.getUser();
@@ -448,4 +458,46 @@ export async function getSubjectHubMetrics() {
     subjectMetrics: metrics,
     totalGlobalHours: (totalGlobalSeconds / 3600).toFixed(1) + 'h'
   };
+}
+
+export async function getGlobalLeaderboard(limit: number = 50, subjectId: string = 'global'): Promise<LeaderboardEntry[]> {
+  try {
+    let data;
+    let error;
+
+    if (subjectId === 'global') {
+      const res = await supabase
+        .from('user_profiles')
+        .select('id, display_name, avatar_url, total_problems_solved, global_accuracy')
+        .order('total_problems_solved', { ascending: false })
+        .order('global_accuracy', { ascending: false })
+        .limit(limit);
+      
+      data = res.data;
+      error = res.error;
+    } else {
+      const res = await supabase.rpc('get_subject_leaderboard', {
+        target_subject_id: subjectId,
+        row_limit: limit
+      });
+      
+      data = res.data;
+      error = res.error;
+    }
+
+    if (error) throw error;
+
+    return (data || []).map((profile: any, index: number) => ({
+      id: profile.id,
+      rank: index + 1,
+      display_name: profile.display_name || 'Anonymous Scholar',
+      avatar_url: profile.avatar_url,
+      total_problems_solved: profile.total_problems_solved || 0,
+      total_hours: profile.total_hours || '0.0h',
+      global_accuracy: profile.global_accuracy || 0
+    }));
+  } catch (error) {
+    console.error('Error fetching leaderboard:', error);
+    return [];
+  }
 }

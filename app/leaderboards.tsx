@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { DrawerActions } from '@react-navigation/native';
 import { useNavigation } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -11,30 +12,50 @@ import {
   View,
   useWindowDimensions
 } from 'react-native';
+import { getGlobalLeaderboard } from '../lib/db';
 import { SUBJECT_LIST } from '../lib/subjects';
-
-const MOCK_LEADERBOARD = [
-  { id: '1', name: 'Elena R.', avatar: 'https://i.pravatar.cc/150?u=elena', score: 142, metric: 'Streak Days' },
-  { id: '2', name: 'Marcus T.', avatar: 'https://i.pravatar.cc/150?u=marcus', score: 128, metric: 'Streak Days' },
-  { id: '3', name: 'Sophie L.', avatar: 'https://i.pravatar.cc/150?u=sophie', score: 115, metric: 'Streak Days' },
-  { id: '4', name: 'David K.', avatar: 'https://i.pravatar.cc/150?u=david', score: 98, metric: 'Streak Days' },
-  { id: '5', name: 'Amira H.', avatar: 'https://i.pravatar.cc/150?u=amira', score: 87, metric: 'Streak Days' },
-  { id: '6', name: 'Scholar (You)', avatar: null, score: 12, metric: 'Streak Days' },
-  { id: '7', name: 'James W.', avatar: 'https://i.pravatar.cc/150?u=james', score: 8, metric: 'Streak Days' },
-];
+import { supabase } from '../lib/supabase';
+import { LeaderboardEntry } from '../lib/types';
 
 export default function LeaderboardsScreen() {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
 
-  const [activeMetric, setActiveMetric] = useState<'Streak' | 'Hours' | 'Accuracy'>('Streak');
+  const [activeMetric, setActiveMetric] = useState<'Total Solved' | 'Accuracy'>('Total Solved');
   const [activeSubject, setActiveSubject] = useState<string>('global');
+  
+  // Live Data State
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const topThree = MOCK_LEADERBOARD.slice(0, 3);
-  const remaining = MOCK_LEADERBOARD.slice(3);
-  const myRankIndex = MOCK_LEADERBOARD.findIndex(u => u.name.includes('(You)'));
-  const myRank = myRankIndex >= 0 ? myRankIndex + 1 : 142;
-  const myData = MOCK_LEADERBOARD[myRankIndex] || { name: 'Scholar (You)', score: 0 };
+  useEffect(() => {
+    async function fetchLeaderboard() {
+      setIsLoading(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) setCurrentUserId(user.id);
+
+        // Fetch top 50 users
+        const data = await getGlobalLeaderboard(50);
+        setLeaderboardData(data);
+      } catch (error) {
+        console.error('Failed to load leaderboard:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchLeaderboard();
+  }, []);
+
+  const topThree = leaderboardData.slice(0, 3);
+  const remaining = leaderboardData.slice(3);
+  
+  // Find current user's rank
+  const myRankIndex = leaderboardData.findIndex(u => u.id === currentUserId);
+  const myRank = myRankIndex >= 0 ? myRankIndex + 1 : '-';
+  const myData = leaderboardData[myRankIndex] || { display_name: 'Anonymous Scholar', total_problems_solved: 0, global_accuracy: 0 };
 
   return (
     <View style={styles.container}>
@@ -52,7 +73,7 @@ export default function LeaderboardsScreen() {
 
         <View style={styles.filtersContainer}>
           <View style={styles.metricsTabs}>
-            {(['Streak', 'Hours', 'Accuracy'] as const).map(metric => (
+            {(['Total Solved', 'Accuracy'] as const).map(metric => (
               <TouchableOpacity 
                 key={metric} 
                 onPress={() => setActiveMetric(metric)} 
@@ -91,92 +112,141 @@ export default function LeaderboardsScreen() {
         </View>
 
         <View style={styles.boardContainer}>
-          <View style={styles.podiumRow}>
-            {topThree[1] && (
-              <View style={[styles.podiumItem, styles.podiumSecond]}>
-                <View style={styles.avatarWrapper}>
-                  <Image source={{ uri: topThree[1].avatar! }} style={styles.avatarImage} />
-                  <View style={[styles.rankBadge, { backgroundColor: '#9CA3AF' }]}>
-                    <Text style={styles.rankBadgeText}>2</Text>
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#185B37" style={{ marginVertical: 40 }} />
+          ) : leaderboardData.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: '#6B7280', marginVertical: 40 }}>No scholars found yet.</Text>
+          ) : (
+            <>
+              <View style={styles.podiumRow}>
+                {topThree[1] && (
+                  <View style={[styles.podiumItem, styles.podiumSecond]}>
+                    <View style={styles.avatarWrapper}>
+                      {topThree[1].avatar_url ? (
+                        <Image source={{ uri: topThree[1].avatar_url }} style={styles.avatarImage} />
+                      ) : (
+                        <View style={[styles.avatarImage, { justifyContent: 'center', alignItems: 'center' }]}>
+                          <Feather color="#9CA3AF" name="user" size={24} />
+                        </View>
+                      )}
+                      <View style={[styles.rankBadge, { backgroundColor: '#9CA3AF' }]}>
+                        <Text style={styles.rankBadgeText}>2</Text>
+                      </View>
+                    </View>
+                    <Text numberOfLines={1} style={styles.podiumName}>
+                      {topThree[1].id === currentUserId ? 'You' : topThree[1].display_name}
+                    </Text>
+                    <Text style={styles.podiumScore}>
+                      {activeMetric === 'Total Solved' ? topThree[1].total_problems_solved : `${Math.round(topThree[1].global_accuracy)}%`}
+                    </Text>
                   </View>
-                </View>
-                <Text numberOfLines={1} style={styles.podiumName}>{topThree[1].name}</Text>
-                <Text style={styles.podiumScore}>{topThree[1].score}</Text>
-              </View>
-            )}
+                )}
 
-            {topThree[0] && (
-              <View style={[styles.podiumItem, styles.podiumFirst]}>
-                <View style={styles.avatarWrapper}>
-                  <Image 
-                    source={{ uri: topThree[0].avatar! }} 
-                    style={[styles.avatarImage, { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#F59E0B' }]} 
-                  />
-                  <View style={[styles.rankBadge, { width: 28, height: 28, borderRadius: 14, bottom: -4, backgroundColor: '#F59E0B' }]}>
-                    <Text style={[styles.rankBadgeText, { fontSize: 14 }]}>1</Text>
+                {topThree[0] && (
+                  <View style={[styles.podiumItem, styles.podiumFirst]}>
+                    <View style={styles.avatarWrapper}>
+                      {topThree[0].avatar_url ? (
+                        <Image 
+                          source={{ uri: topThree[0].avatar_url }} 
+                          style={[styles.avatarImage, { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#F59E0B' }]} 
+                        />
+                      ) : (
+                        <View style={[styles.avatarImage, { width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#F59E0B', justifyContent: 'center', alignItems: 'center' }]}>
+                          <Feather color="#9CA3AF" name="user" size={32} />
+                        </View>
+                      )}
+                      <View style={[styles.rankBadge, { width: 28, height: 28, borderRadius: 14, bottom: -4, backgroundColor: '#F59E0B' }]}>
+                        <Text style={[styles.rankBadgeText, { fontSize: 14 }]}>1</Text>
+                      </View>
+                    </View>
+                    <Text numberOfLines={1} style={[styles.podiumName, { fontSize: 18, marginTop: 18 }]}>
+                      {topThree[0].id === currentUserId ? 'You' : topThree[0].display_name}
+                    </Text>
+                    <Text style={[styles.podiumScore, { fontSize: 16, color: '#F59E0B' }]}>
+                      {activeMetric === 'Total Solved' ? topThree[0].total_problems_solved : `${Math.round(topThree[0].global_accuracy)}%`}
+                    </Text>
                   </View>
-                </View>
-                <Text numberOfLines={1} style={[styles.podiumName, { fontSize: 18, marginTop: 18 }]}>{topThree[0].name}</Text>
-                <Text style={[styles.podiumScore, { fontSize: 16, color: '#F59E0B' }]}>{topThree[0].score}</Text>
-              </View>
-            )}
+                )}
 
-            {topThree[2] && (
-              <View style={[styles.podiumItem, styles.podiumThird]}>
-                <View style={styles.avatarWrapper}>
-                  <Image source={{ uri: topThree[2].avatar! }} style={styles.avatarImage} />
-                  <View style={[styles.rankBadge, { backgroundColor: '#B45309' }]}>
-                    <Text style={styles.rankBadgeText}>3</Text>
+                {topThree[2] && (
+                  <View style={[styles.podiumItem, styles.podiumThird]}>
+                    <View style={styles.avatarWrapper}>
+                      {topThree[2].avatar_url ? (
+                        <Image source={{ uri: topThree[2].avatar_url }} style={styles.avatarImage} />
+                      ) : (
+                        <View style={[styles.avatarImage, { justifyContent: 'center', alignItems: 'center' }]}>
+                          <Feather color="#9CA3AF" name="user" size={24} />
+                        </View>
+                      )}
+                      <View style={[styles.rankBadge, { backgroundColor: '#B45309' }]}>
+                        <Text style={styles.rankBadgeText}>3</Text>
+                      </View>
+                    </View>
+                    <Text numberOfLines={1} style={styles.podiumName}>
+                      {topThree[2].id === currentUserId ? 'You' : topThree[2].display_name}
+                    </Text>
+                    <Text style={styles.podiumScore}>
+                      {activeMetric === 'Total Solved' ? topThree[2].total_problems_solved : `${Math.round(topThree[2].global_accuracy)}%`}
+                    </Text>
                   </View>
-                </View>
-                <Text numberOfLines={1} style={styles.podiumName}>{topThree[2].name}</Text>
-                <Text style={styles.podiumScore}>{topThree[2].score}</Text>
+                )}
               </View>
-            )}
-          </View>
 
-          <View style={styles.listContainer}>
-            {remaining.map((user, index) => {
-              const actualRank = index + 4;
-              const isMe = user.name.includes('(You)');
-              
-              return (
-                <View key={user.id} style={[styles.listItem, isMe && styles.listItemMe]}>
-                  <Text style={styles.listRank}>{actualRank}</Text>
-                  <View style={styles.listAvatar}>
-                    {user.avatar ? (
-                      <Image source={{ uri: user.avatar }} style={styles.listAvatarImage} />
-                    ) : (
-                      <Feather color="#FFFFFF" name="user" size={16} />
-                    )}
-                  </View>
-                  <Text numberOfLines={1} style={[styles.listName, isMe && styles.listNameMe]}>
-                    {user.name}
-                  </Text>
-                  <Text style={[styles.listScore, isMe && styles.listScoreMe]}>{user.score}</Text>
-                </View>
-              );
-            })}
-          </View>
+              <View style={styles.listContainer}>
+                {remaining.map((user, index) => {
+                  const actualRank = index + 4;
+                  const isMe = user.id === currentUserId;
+                  
+                  return (
+                    <View key={user.id} style={[styles.listItem, isMe && styles.listItemMe]}>
+                      <Text style={styles.listRank}>{actualRank}</Text>
+                      <View style={styles.listAvatar}>
+                        {user.avatar_url ? (
+                          <Image source={{ uri: user.avatar_url }} style={styles.listAvatarImage} />
+                        ) : (
+                          <Feather color="#FFFFFF" name="user" size={16} />
+                        )}
+                      </View>
+                      <Text numberOfLines={1} style={[styles.listName, isMe && styles.listNameMe]}>
+                        {isMe ? 'You' : user.display_name}
+                      </Text>
+                      <Text style={[styles.listScore, isMe && styles.listScoreMe]}>
+                        {activeMetric === 'Total Solved' ? user.total_problems_solved : `${Math.round(user.global_accuracy)}%`}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
         </View>
       </ScrollView>
 
-      <View style={styles.stickyFooter}>
-        <View style={styles.stickyContent}>
-          <Text style={styles.listRank}>{myRank}</Text>
-          <View style={[styles.listAvatar, { backgroundColor: '#185B37' }]}>
-            <Feather color="#FFFFFF" name="user" size={16} />
+      {!isLoading && currentUserId && (
+        <View style={styles.stickyFooter}>
+          <View style={styles.stickyContent}>
+            <Text style={styles.listRank}>{myRank}</Text>
+            <View style={[styles.listAvatar, { backgroundColor: '#185B37' }]}>
+              {myData.avatar_url ? (
+                <Image source={{ uri: myData.avatar_url }} style={styles.listAvatarImage} />
+              ) : (
+                <Feather color="#FFFFFF" name="user" size={16} />
+              )}
+            </View>
+            <Text numberOfLines={1} style={[styles.listName, styles.listNameMe]}>
+              You
+            </Text>
+            <Text style={[styles.listScore, styles.listScoreMe]}>
+              {activeMetric === 'Total Solved' ? myData.total_problems_solved : `${Math.round(myData.global_accuracy)}%`}
+            </Text>
           </View>
-          <Text numberOfLines={1} style={[styles.listName, styles.listNameMe]}>
-            {myData.name}
-          </Text>
-          <Text style={[styles.listScore, styles.listScoreMe]}>{myData.score}</Text>
         </View>
-      </View>
+      )}
     </View>
   );
 }
 
+// ... Keep all your existing styles exactly as they were ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
