@@ -24,7 +24,6 @@ export default function LeaderboardsScreen() {
   const [activeMetric, setActiveMetric] = useState<'Total Solved' | 'Accuracy'>('Total Solved');
   const [activeSubject, setActiveSubject] = useState<string>('global');
   
-  // Live Data State
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -36,8 +35,8 @@ export default function LeaderboardsScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) setCurrentUserId(user.id);
 
-        // Fetch top 50 users
-        const data = await getGlobalLeaderboard(50);
+        // Pass the activeSubject to the fetch function
+        const data = await getGlobalLeaderboard(50, activeSubject);
         setLeaderboardData(data);
       } catch (error) {
         console.error('Failed to load leaderboard:', error);
@@ -47,12 +46,11 @@ export default function LeaderboardsScreen() {
     }
 
     fetchLeaderboard();
-  }, []);
+  }, [activeSubject]);
 
   const topThree = leaderboardData.slice(0, 3);
   const remaining = leaderboardData.slice(3);
   
-  // Find current user's rank
   const myRankIndex = leaderboardData.findIndex(u => u.id === currentUserId);
   const myRank = myRankIndex >= 0 ? myRankIndex + 1 : '-';
   const myData = leaderboardData[myRankIndex] || { display_name: 'Anonymous Scholar', total_problems_solved: 0, global_accuracy: 0 };
@@ -246,7 +244,6 @@ export default function LeaderboardsScreen() {
   );
 }
 
-// ... Keep all your existing styles exactly as they were ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,

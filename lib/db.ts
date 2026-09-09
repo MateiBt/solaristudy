@@ -493,7 +493,6 @@ export async function getGlobalLeaderboard(limit: number = 50, subjectId: string
       display_name: profile.display_name || 'Anonymous Scholar',
       avatar_url: profile.avatar_url,
       total_problems_solved: profile.total_problems_solved || 0,
-      total_hours: profile.total_hours || '0.0h',
       global_accuracy: profile.global_accuracy || 0
     }));
   } catch (error) {
