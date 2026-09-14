@@ -1,6 +1,7 @@
 export type SessionMode = 'SolariLearn' | 'SolariSolve';
 export type SolveStage = 'ingest_problems' | 'focus_timer' | 'grading_and_review';
 export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'failed';
+export type SessionStatus = 'Active' | 'Favorited' | 'Archived';
 
 export interface StudyFolder {
   id: string;
@@ -71,7 +72,7 @@ export interface LeaderboardEntry {
 
 export interface SessionFilters {
   mode?: SessionMode | 'All';
-  status?: 'Active' | 'Favorited' | 'Archived';
+  status?: SessionStatus | 'All';
   topic?: string | null;
 }
 

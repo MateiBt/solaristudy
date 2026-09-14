@@ -1,3 +1,4 @@
+import { enqueueMutation, getLocalCache, setLocalCache } from './offlineQueue';
 import { supabase } from './supabase';
 import {
   ChatSession,
@@ -118,50 +119,70 @@ export async function getDashboardMetrics() {
 }
 
 export async function toggleMessageAccuracy(messageId: string, include: boolean) {
-  const { error } = await supabase
-    .from('chat_messages')
-    .update({ include_in_accuracy: include })
-    .eq('id', messageId);
+  try {
+    const { error } = await supabase
+      .from('chat_messages')
+      .update({ include_in_accuracy: include })
+      .eq('id', messageId);
 
-  if (error) throw error;
+    if (error) throw error;
+  } catch (error) {
+    console.warn('Offline: Enqueuing toggleMessageAccuracy mutation');
+    await enqueueMutation({ type: 'toggle_accuracy', payload: { messageId, include } });
+  }
 }
 
 export async function getFolders(subjectId: string, parentId: string | null = null): Promise<StudyFolder[]> {
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error("Not authenticated");
+  const cacheKey = `@cache_folders_${subjectId}_${parentId || 'root'}`;
+  try {
+    const { data: user } = await supabase.auth.getUser();
+    if (!user.user) throw new Error("Not authenticated");
 
-  let query = supabase
-    .from('study_folders')
-    .select('*')
-    .eq('user_id', user.user.id)
-    .eq('subject_id', subjectId)
-    .order('created_at', { ascending: true });
+    let query = supabase
+      .from('study_folders')
+      .select('*')
+      .eq('user_id', user.user.id)
+      .eq('subject_id', subjectId)
+      .order('created_at', { ascending: true });
 
-  if (parentId) {
-    query = query.eq('parent_id', parentId);
-  } else {
-    query = query.is('parent_id', null);
+    if (parentId) {
+      query = query.eq('parent_id', parentId);
+    } else {
+      query = query.is('parent_id', null);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    await setLocalCache(cacheKey, data || []);
+    return data || [];
+  } catch (error) {
+    console.warn('Network error in getFolders, falling back to cache:', error);
+    const cachedData = await getLocalCache<StudyFolder[]>(cacheKey);
+    return cachedData || [];
   }
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
 }
 
 export async function createFolder(subjectId: string, name: string, parentId: string | null = null) {
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error("Not authenticated");
 
-  const { data, error } = await supabase
-    .from('study_folders')
-    .insert([
-      { user_id: user.user.id, subject_id: subjectId, name, parent_id: parentId }
-    ])
-    .select()
-    .single();
+  const payload = { user_id: user.user.id, subject_id: subjectId, name, parent_id: parentId };
+  
+  try {
+    const { data, error } = await supabase
+      .from('study_folders')
+      .insert([payload])
+      .select()
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.warn('Offline: Enqueuing createFolder mutation');
+    await enqueueMutation({ type: 'create_folder', payload });
+    return { id: `temp-${Date.now()}`, ...payload, created_at: new Date().toISOString() };
+  }
 }
 
 export async function deleteFolder(folderId: string) {
@@ -174,25 +195,34 @@ export async function deleteFolder(folderId: string) {
 }
 
 export async function getSessions(subjectId: string, folderId: string | null = null): Promise<ChatSession[]> {
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error("Not authenticated");
+  const cacheKey = `@cache_sessions_${subjectId}_${folderId || 'root'}`;
+  try {
+    const { data: user } = await supabase.auth.getUser();
+    if (!user.user) throw new Error("Not authenticated");
 
-  let query = supabase
-    .from('chat_sessions')
-    .select('*')
-    .eq('user_id', user.user.id)
-    .eq('subject_id', subjectId)
-    .order('updated_at', { ascending: false });
+    let query = supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('user_id', user.user.id)
+      .eq('subject_id', subjectId)
+      .order('updated_at', { ascending: false });
 
-  if (folderId) {
-    query = query.eq('folder_id', folderId);
-  } else {
-    query = query.is('folder_id', null);
+    if (folderId) {
+      query = query.eq('folder_id', folderId);
+    } else {
+      query = query.is('folder_id', null);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    await setLocalCache(cacheKey, data || []);
+    return data || [];
+  } catch (error) {
+    console.warn('Network error in getSessions, falling back to cache:', error);
+    const cachedData = await getLocalCache<ChatSession[]>(cacheKey);
+    return cachedData || [];
   }
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
 }
 
 export async function getScopedSubjectSessions(
@@ -251,25 +281,31 @@ export async function createSession(
   const title = customTitle && customTitle.trim() !== '' ? customTitle : 'New Session';
   const title_confirmed = !!customTitle;
 
-  const { data, error } = await supabase
-    .from('chat_sessions')
-    .insert([
-      { 
-        user_id: user.user.id, 
-        subject_id: subjectId, 
-        folder_id: folderId, 
-        title,
-        title_confirmed,
-        mode,
-        model_id: modelId,
-        topic: topic || null
-      }
-    ])
-    .select()
-    .single();
+  const payload = { 
+    user_id: user.user.id, 
+    subject_id: subjectId, 
+    folder_id: folderId, 
+    title,
+    title_confirmed,
+    mode,
+    model_id: modelId,
+    topic: topic || null
+  };
 
-  if (error) throw error;
-  return data;
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.warn('Offline: Enqueuing createSession mutation');
+    await enqueueMutation({ type: 'create_session', payload });
+    return { id: `temp-${Date.now()}`, ...payload, updated_at: new Date().toISOString() };
+  }
 }
 
 export async function updateSessionState(sessionId: string, updates: Partial<ChatSession>) {
@@ -305,7 +341,12 @@ export async function updateSolveStage(
       updates.actual_focus_seconds = timerMetadata.actualFocusSeconds;
   }
 
-  await updateSessionState(sessionId, updates);
+  try {
+    await updateSessionState(sessionId, updates);
+  } catch (error) {
+    console.warn('Offline: Enqueuing updateSolveStage mutation');
+    await enqueueMutation({ type: 'update_solve_stage', payload: { sessionId, updates } });
+  }
 }
 
 export async function markMessageStatus(messageId: string, status: MessageStatus) {
@@ -461,6 +502,7 @@ export async function getSubjectHubMetrics() {
 }
 
 export async function getGlobalLeaderboard(limit: number = 50, subjectId: string = 'global'): Promise<LeaderboardEntry[]> {
+  const cacheKey = `@cache_leaderboard_${subjectId}_${limit}`;
   try {
     let data;
     let error;
@@ -487,7 +529,7 @@ export async function getGlobalLeaderboard(limit: number = 50, subjectId: string
 
     if (error) throw error;
 
-    return (data || []).map((profile: any, index: number) => ({
+    const formattedData = (data || []).map((profile: any, index: number) => ({
       id: profile.id,
       rank: index + 1,
       display_name: profile.display_name || 'Anonymous Scholar',
@@ -495,8 +537,12 @@ export async function getGlobalLeaderboard(limit: number = 50, subjectId: string
       total_problems_solved: profile.total_problems_solved || 0,
       global_accuracy: profile.global_accuracy || 0
     }));
+
+    await setLocalCache(cacheKey, formattedData);
+    return formattedData;
   } catch (error) {
-    console.error('Error fetching leaderboard:', error);
-    return [];
+    console.warn('Network error in getGlobalLeaderboard, falling back to cache:', error);
+    const cachedData = await getLocalCache<LeaderboardEntry[]>(cacheKey);
+    return cachedData || [];
   }
 }

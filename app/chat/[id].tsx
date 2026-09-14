@@ -141,6 +141,7 @@ const AttachmentModal = ({ visible, onClose, onImageSelected }: AttachmentPicker
 
 const MathBubble = ({ content }: { content: string }) => {
   const [height, setHeight] = useState(40);
+  const [opacity, setOpacity] = useState(0);
 
   if (Platform.OS === 'web') {
     return (
@@ -165,8 +166,9 @@ const MathBubble = ({ content }: { content: string }) => {
           font-size: 15px; 
           color: #111827; 
           margin: 0; 
-          padding: 0;
+          padding: 2px;
           word-wrap: break-word;
+          overflow-y: hidden;
         }
         p { margin-top: 0; margin-bottom: 12px; }
         p:last-child { margin-bottom: 0; }
@@ -190,23 +192,30 @@ const MathBubble = ({ content }: { content: string }) => {
           throwOnError: false
         });
 
+        let lastHeight = 0;
         const sendHeight = () => {
           const contentHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-          window.ReactNativeWebView.postMessage(contentHeight.toString());
+          if (contentHeight !== lastHeight) {
+            lastHeight = contentHeight;
+            window.ReactNativeWebView.postMessage(contentHeight.toString());
+          }
         };
         
-        const observer = new MutationObserver(sendHeight);
+        const observer = new MutationObserver(() => {
+          clearTimeout(window.resizeTimer);
+          window.resizeTimer = setTimeout(sendHeight, 50);
+        });
+        
         observer.observe(document.body, { childList: true, subtree: true, attributes: true });
         
         window.onload = sendHeight;
-        setTimeout(sendHeight, 200); 
       </script>
     </body>
     </html>
   `;
 
   return (
-    <View style={{ height, width: '100%', minHeight: 40 }}>
+    <View style={{ height, width: '100%', minHeight: 40, opacity }}>
       <WebView
         originWhitelist={['*']}
         source={{ html }}
@@ -217,7 +226,10 @@ const MathBubble = ({ content }: { content: string }) => {
         bounces={false}
         onMessage={(event) => {
           const contentHeight = Number(event.nativeEvent.data);
-          if (contentHeight > 0) setHeight(contentHeight + 16); 
+          if (contentHeight > 0) {
+            setHeight(contentHeight + 12); 
+            setOpacity(1); 
+          }
         }}
       />
     </View>
@@ -228,6 +240,7 @@ export default function ChatScreen() {
   const { id, folderId: paramFolderId, sessionId: paramSessionId } = useLocalSearchParams();
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView>(null);
+  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const subjectId = id ? id.toString() : 'general';
   const subjectName = subjectId.charAt(0).toUpperCase() + subjectId.slice(1);
@@ -263,6 +276,13 @@ export default function ChatScreen() {
 
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const [sessionToEdit, setSessionToEdit] = useState<ChatSession | null>(null);
+
+  const handleScrollToEnd = () => {
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    scrollTimeout.current = setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
+  };
 
   useEffect(() => {
     if (paramFolderId && !currentFolderId) {
@@ -347,6 +367,7 @@ export default function ChatScreen() {
         const tempMsgs = prev.filter(m => m.id && String(m.id).startsWith('temp-') && !dbIds.has(m.id));
         return [...fetchedMsgs, ...tempMsgs];
       });
+      handleScrollToEnd();
     } catch (error) {
       console.error(error);
     }
@@ -436,7 +457,7 @@ export default function ChatScreen() {
          if (data) setMessages(prev => prev.map(m => m.id === tempMsgId ? data as ChatMessage : m));
        });
        
-       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+       handleScrollToEnd();
     }
   }
 
@@ -491,7 +512,7 @@ export default function ChatScreen() {
         include_in_accuracy: true,
         created_at: new Date().toISOString()
       }]);
-      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+      handleScrollToEnd();
 
       supabase.from('chat_messages').insert([{
         session_id: sessionToUse.id as string,
@@ -576,7 +597,7 @@ export default function ChatScreen() {
           await saveOcrExtraction(insertedAiMsg.id as string, finalAiText, currentAttachment.uri);
         }
       }
-      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+      handleScrollToEnd();
 
     } catch (error) {
       console.error(error);
@@ -820,7 +841,11 @@ export default function ChatScreen() {
   );
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+    >
       
       <Modal visible={showTitleModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -1090,7 +1115,7 @@ export default function ChatScreen() {
                   style={styles.chatArea} 
                   showsVerticalScrollIndicator={false} 
                   contentContainerStyle={styles.scrollContent}
-                  onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                  onContentSizeChange={handleScrollToEnd}
                 >
                   {messages.map((msg, idx) => {
                     const displayContent = (msg.content || '').replace(/SCORE:\[\d+(?:\.\d+)?\/\d+(?:\.\d+)?\]/, '').trim();

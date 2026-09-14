@@ -5,6 +5,7 @@ import {
   useFonts
 } from '@expo-google-fonts/bricolage-grotesque';
 import { Feather } from '@expo/vector-icons';
+import NetInfo from '@react-native-community/netinfo';
 import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { User } from '@supabase/supabase-js';
 import { usePathname, useRouter, useSegments } from 'expo-router';
@@ -16,6 +17,7 @@ import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { getDashboardMetrics, getUserProfile } from '../lib/db';
+import { flushMutationQueue } from '../lib/offlineQueue';
 import { SUBJECT_LIST } from '../lib/subjects';
 import { supabase } from '../lib/supabase';
 
@@ -152,6 +154,21 @@ export default function RootLayout() {
   const segments = useSegments();
   const [user, setUser] = useState<User | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
+
+  // Background Sync Listener
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected && authInitialized && user) {
+        flushMutationQueue().then(processedCount => {
+          if (processedCount > 0) {
+            console.log(`Synced ${processedCount} pending offline actions.`);
+          }
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [authInitialized, user]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
