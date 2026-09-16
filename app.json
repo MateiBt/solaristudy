@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "solaristudy-frontend",
+    "name": "SolariStudy",
     "slug": "solaristudy-frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.matei.solaristudy"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +20,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.matei.solaristudy"
     },
     "web": {
       "bundler": "metro",
@@ -40,7 +42,14 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SolariStudy needs access to your photos so you can upload problem sets for AI extraction and grading.",
+          "cameraPermission": "SolariStudy needs access to your camera to capture worksheets and whiteboards."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

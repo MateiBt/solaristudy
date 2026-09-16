@@ -12,14 +12,14 @@ export interface AIRequestOptions {
   attachment?: { base64: string; mimeType: string };
 }
 
-const EDGE_FUNCTION_URL = 'https://wyivhhhhosokazyrovti.supabase.co/functions/v1/chat-completion';
+const EDGE_FUNCTION_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://wyivhhhhosokazyrovti.supabase.co'}/functions/v1/chat-gemini`;
 
 export async function generateAIResponse(
   prompt: string,
   options: AIRequestOptions,
   onUpdate?: (fullText: string) => void 
 ): Promise<string> {
-  const { mode, model_id = 'gemini-3.5-flash-lite', conversationHistory = [], folderContext = '', attachment } = options;
+  const { mode, model_id = 'gemini-3.5-flash', conversationHistory = [], attachment, solvePhase } = options;
 
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error || !session?.access_token) {
@@ -28,11 +28,10 @@ export async function generateAIResponse(
 
   const payload = {
     prompt,
-    history: conversationHistory,
+    conversationHistory,
     mode,
     model_id,
-    solve_phase: options.solvePhase,
-    folder_context: folderContext,
+    solvePhase,
     attachment,
   };
 
@@ -45,30 +44,13 @@ export async function generateAIResponse(
 
     let fullText = '';
     let processedLength = 0;
-    let buffer = '';
 
     xhr.onprogress = () => {
-      const newText = xhr.responseText.substring(processedLength);
+      const chunk = xhr.responseText.substring(processedLength);
       processedLength = xhr.responseText.length;
-      buffer += newText;
-
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; 
-
-      for (const line of lines) {
-        if (line.trim().startsWith('data:')) {
-          const dataStr = line.replace(/^data:/, '').trim();
-          if (dataStr === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(dataStr);
-            const chunkText = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            fullText += chunkText;
-            if (onUpdate) onUpdate(fullText); 
-          } catch (e) {
-            
-          }
-        }
-      }
+      fullText += chunk;
+      
+      if (onUpdate) onUpdate(fullText);
     };
 
     xhr.onload = () => {
