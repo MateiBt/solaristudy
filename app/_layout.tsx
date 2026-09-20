@@ -1,8 +1,8 @@
 import {
-  BricolageGrotesque_400Regular,
-  BricolageGrotesque_500Medium,
-  BricolageGrotesque_600SemiBold,
-  useFonts
+    BricolageGrotesque_400Regular,
+    BricolageGrotesque_500Medium,
+    BricolageGrotesque_600SemiBold,
+    useFonts
 } from '@expo-google-fonts/bricolage-grotesque';
 import { Feather } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
@@ -155,7 +155,6 @@ export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
 
-  // Background Sync Listener
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
       if (state.isConnected && authInitialized && user) {

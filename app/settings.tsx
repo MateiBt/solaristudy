@@ -42,7 +42,7 @@ export default function SettingsScreen() {
 
       if (data) {
         setDisplayName(data.display_name || '');
-        setDefaultModel(data.default_model || 'gemini-1.5-flash');
+        setDefaultModel(data.default_model || 'gemini-3.5-flash');
         setDefaultMode(data.default_mode || 'SolariLearn');
         setTimerPreset(data.timer_preset || 25);
       }
@@ -150,14 +150,14 @@ export default function SettingsScreen() {
         <TouchableOpacity 
           style={styles.settingRow} 
           activeOpacity={0.7}
-          onPress={() => setDefaultModel(defaultModel === 'gemini-1.5-flash' ? 'gemini-1.5-pro' : 'gemini-1.5-flash')}
+          onPress={() => setDefaultModel(defaultModel === 'gemini-3.5-flash' ? 'gemini-3.5-pro' : 'gemini-3.5-flash')}
         >
           <View style={[styles.iconBox, { backgroundColor: '#F3F4F6' }]}>
             <Feather name="cpu" size={18} color="#4B5563" />
           </View>
           <Text style={styles.settingText}>Default Engine Model</Text>
           <Text style={styles.settingValue}>
-            {defaultModel === 'gemini-1.5-flash' ? 'Flash (Fast)' : 'Pro (Advanced)'}
+            {defaultModel === 'gemini-3.5-flash' ? 'Flash (Fast)' : 'Pro (Advanced)'}
           </Text>
           <Feather name="refresh-cw" size={16} color="#D1D5DB" />
         </TouchableOpacity>
@@ -202,7 +202,7 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>Data & Privacy</Text>
       <View style={styles.sectionCard}>
         <TouchableOpacity style={styles.settingRow} activeOpacity={0.7}>
-          <View style={[styles.iconBox, { backgroundColor: '#F3F4F6' }]}>
+          <View style={[styles.iconBox, { backgroundColor: '#F3F4F6' }]}>npx
             <Feather name="download" size={18} color="#4B5563" />
           </View>
           <Text style={styles.settingText}>Export Workspace Data</Text>

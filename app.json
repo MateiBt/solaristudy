@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "solaristudyfrontend",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.matei.solaristudy"
@@ -19,9 +18,11 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.matei.solaristudy"
+      "package": "com.matei.solaristudy",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -54,6 +55,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8f98a2b9-16b0-4493-8eb6-aa66c8f786aa"
+      }
+    },
+    "owner": "mathbty"
   }
 }

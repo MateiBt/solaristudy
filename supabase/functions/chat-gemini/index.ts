@@ -16,10 +16,6 @@ serve(async (req) => {
   try {
     const { prompt, mode, solvePhase, conversationHistory, attachment, model_id } = await req.json();
 
-    // Initialize Gemini SDK with Edge Environment Variable
-    const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY') || '');
-    const model = genAI.getGenerativeModel({ model: model_id || 'gemini-1.5-flash' });
-
     let systemPrompt = '';
 
     // Route logic based on mode
@@ -40,6 +36,15 @@ serve(async (req) => {
       }
     }
 
+    // Initialize Gemini SDK with Edge Environment Variable
+    const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY') || '');
+    
+    // Pass systemInstruction properly formatted as Content to getGenerativeModel
+    const model = genAI.getGenerativeModel({
+      model: model_id || 'gemini-3.5-flash',
+      systemInstruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
+    });
+
     // Format history for the GenAI SDK
     const history = (conversationHistory || []).map((msg: any) => ({
       role: msg.sender === 'ai' ? 'model' : 'user',
@@ -48,7 +53,6 @@ serve(async (req) => {
 
     const chat = model.startChat({
       history: history,
-      systemInstruction: systemPrompt,
     });
 
     const parts = [];
