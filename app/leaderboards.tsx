@@ -35,7 +35,6 @@ export default function LeaderboardsScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) setCurrentUserId(user.id);
 
-        // Pass the activeSubject to the fetch function
         const data = await getGlobalLeaderboard(50, activeSubject);
         setLeaderboardData(data);
       } catch (error) {

@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -44,7 +45,9 @@ export default function LoginScreen() {
 
     try {
       if (isResetting) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: Linking.createURL(''),
+        });
         if (error) throw error;
         setSuccessMsg('Password reset instructions sent to your email.');
         setIsResetting(false);
@@ -52,6 +55,9 @@ export default function LoginScreen() {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password: password.trim(),
+          options: {
+            emailRedirectTo: Linking.createURL(''),
+          },
         });
         if (error) throw error;
         setSuccessMsg('Account created! Please check your email to verify.');

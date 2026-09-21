@@ -21,7 +21,7 @@ export default function SettingsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const [defaultModel, setDefaultModel] = useState('gemini-1.5-flash');
+  const [defaultModel, setDefaultModel] = useState('gemini-3.5-flash');
   const [defaultMode, setDefaultMode] = useState('SolariLearn');
   const [timerPreset, setTimerPreset] = useState(25);
 

@@ -1,8 +1,8 @@
 import {
-    BricolageGrotesque_400Regular,
-    BricolageGrotesque_500Medium,
-    BricolageGrotesque_600SemiBold,
-    useFonts
+  BricolageGrotesque_400Regular,
+  BricolageGrotesque_500Medium,
+  BricolageGrotesque_600SemiBold,
+  useFonts
 } from '@expo-google-fonts/bricolage-grotesque';
 import { Feather } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';

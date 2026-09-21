@@ -479,7 +479,7 @@ export default function ChatScreen() {
           subjectId, 
           currentFolderId as string | null, 
           activeMode, 
-          'gemini-1.5-flash', 
+          'gemini-3.5-flash', 
           undefined, 
           selectedTopic && selectedTopic !== 'Other topics' ? selectedTopic : null
         );
@@ -551,7 +551,7 @@ export default function ChatScreen() {
 
       const aiResponseText = await generateAIResponse(aiPromptText, {
         mode: activeMode,
-        model_id: sessionToUse.model_id || 'gemini-1.5-flash',
+        model_id: sessionToUse.model_id || 'gemini-3.5-flash',
         solvePhase: activeMode === 'SolariSolve' ? solvePhase : undefined,
         conversationHistory: messages.map(m => ({ sender: m.sender as 'user' | 'ai', content: m.content || '' })),
         attachment: currentAttachment ? { base64: currentAttachment.base64, mimeType: currentAttachment.mimeType } : undefined
