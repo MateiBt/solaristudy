@@ -11,6 +11,11 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://wyivhhhhosokazyrovti.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_4h-y-Ke4lkfWbcQzspUW8A_pNygZnQC",
+        "EXPO_PUBLIC_GEMINI_API_KEY": "YOUR_NEW_GEMINI_API_KEY"
       }
     },
     "production": {}
