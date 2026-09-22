@@ -17,18 +17,24 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import Markdown from 'react-native-markdown-display';
-import { WebView } from 'react-native-webview';
 import { generateAIResponse } from '../../lib/ai';
 import { createFolder, createSession, deleteSession, getFolders, getSessions, saveOcrExtraction, toggleMessageAccuracy, updateSessionState, updateSolveStage } from '../../lib/db';
 import { supabase } from '../../lib/supabase';
 import { ChatMessage, ChatSession, SessionMode, SolveStage, StudyFolder } from '../../lib/types';
+
+let WebView: any;
+if (Platform.OS !== 'web') {
+  WebView = require('react-native-webview').WebView;
+}
 
 const PHYSICS_TOPICS = [
   'Classical Mechanics', 'Quantum Mechanics', 'Electromagnetism', 
   'Statistical Physics', 'Condensed Matter', 'General Relativity', 
   'Optics', 'Quantum Field Theory', 'Other topics'
 ];
+
+const isValidUUID = (id: string) => 
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 interface AttachmentPickerProps {
   visible: boolean;
@@ -139,98 +145,192 @@ const AttachmentModal = ({ visible, onClose, onImageSelected }: AttachmentPicker
   );
 };
 
+const MATH_HTML_TEMPLATE = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <style>
+      body { 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        font-size: 15px; 
+        color: #111827; 
+        margin: 0; 
+        padding: 2px;
+        overflow-wrap: break-word;
+        overflow-y: hidden;
+      }
+      p { margin-top: 0; margin-bottom: 12px; }
+      p:last-child { margin-bottom: 0; }
+      code { background: #F3F4F6; padding: 2px 4px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+      pre { background: #F3F4F6; padding: 12px; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 13px;}
+      pre code { background: transparent; padding: 0; }
+      strong { font-weight: 600; }
+      em { font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <div id="content"></div>
+    <script>
+      window.updateContent = function(encodedContent) {
+        try {
+          const rawContent = decodeURIComponent(encodedContent);
+          
+          let mathBlocks = [];
+          let maskedContent = rawContent.replace(/(\\$\\$[\\s\\S]*?\\$\\$|\\$[\\s\\S]*?\\$|\\\\\\[[\\s\\S]*?\\\\\\]|\\\\\\([\\s\\S]*?\\\\\\))/g, function(match) {
+            mathBlocks.push(match);
+            return '%%%SOLARIMATH' + (mathBlocks.length - 1) + '%%%';
+          });
+
+          let parsedHTML = marked.parse(maskedContent || '');
+
+          for (let i = 0; i < mathBlocks.length; i++) {
+            parsedHTML = parsedHTML.split('%%%SOLARIMATH' + i + '%%%').join(mathBlocks[i]);
+          }
+
+          document.getElementById('content').innerHTML = parsedHTML;
+
+          renderMathInElement(document.getElementById('content'), {
+            delimiters: [
+              {left: "$$", right: "$$", display: true},
+              {left: "\\\\[", right: "\\\\]", display: true},
+              {left: "$", right: "$", display: false},
+              {left: "\\\\(", right: "\\\\)", display: false}
+            ],
+            throwOnError: false, 
+            errorColor: '#cc0000'
+          });
+          
+          if (!window.hasSetupObserver) {
+            window.hasSetupObserver = true;
+            const resizeObserver = new ResizeObserver(() => {
+              const contentHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+              const msgPayload = JSON.stringify({ type: 'height', value: contentHeight });
+              if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(msgPayload);
+              else if (window.parent) window.parent.postMessage(msgPayload, '*');
+            });
+            resizeObserver.observe(document.body);
+          }
+        } catch (e) {
+          console.error("Render Error:", e);
+        }
+      };
+
+      window.addEventListener('message', function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'updateContent') window.updateContent(data.content);
+        } catch (err) {}
+      });
+      
+      document.addEventListener('message', function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'updateContent') window.updateContent(data.content);
+        } catch (err) {}
+      });
+
+      window.onload = function() {
+        const msgPayload = JSON.stringify({ type: 'ready' });
+        if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(msgPayload);
+        else if (window.parent) window.parent.postMessage(msgPayload, '*');
+      };
+    </script>
+  </body>
+  </html>
+`;
+
+const WebIframe = React.forwardRef((props: any, ref: any) => {
+  return React.createElement('iframe', { ...props, ref });
+});
+
 const MathBubble = ({ content }: { content: string }) => {
   const [height, setHeight] = useState(40);
-  const [opacity, setOpacity] = useState(0);
+  const [isReady, setIsReady] = useState(false);
+  
+  const webViewRef = useRef<any>(null);
+  const iframeRef = useRef<any>(null);
+  const updateTimer = useRef<any>(null);
+  const lastUpdate = useRef<number>(Date.now());
+  const [htmlTemplate] = useState(MATH_HTML_TEMPLATE);
+
+  useEffect(() => {
+    if (!isReady) return;
+
+    const sendUpdate = () => {
+      lastUpdate.current = Date.now();
+      const encodedContent = encodeURIComponent(content || '');
+      const message = JSON.stringify({ type: 'updateContent', content: encodedContent });
+
+      if (Platform.OS === 'web') {
+        if (iframeRef.current && iframeRef.current.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(message, '*');
+        }
+      } else {
+        if (webViewRef.current) {
+          webViewRef.current.postMessage(message);
+        }
+      }
+    };
+
+    const now = Date.now();
+    if (now - lastUpdate.current > 150) {
+      sendUpdate(); 
+    } else {
+      clearTimeout(updateTimer.current);
+      updateTimer.current = setTimeout(sendUpdate, 150);
+    }
+
+    return () => clearTimeout(updateTimer.current);
+  }, [content, isReady]);
+
+  const handleMessage = (eventData: string) => {
+    try {
+      const data = JSON.parse(eventData);
+      if (data.type === 'ready') {
+        setIsReady(true);
+      } else if (data.type === 'height' && data.value > 0) {
+        setHeight(data.value + 12);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const handleWebMessage = (event: MessageEvent) => handleMessage(event.data);
+      window.addEventListener('message', handleWebMessage);
+      return () => window.removeEventListener('message', handleWebMessage);
+    }
+  }, []);
 
   if (Platform.OS === 'web') {
     return (
-      <Markdown style={markdownStyles}>
-        {content || '...'}
-      </Markdown>
+      <View style={{ height, width: '100%', minHeight: 40 }}>
+        <WebIframe
+          ref={iframeRef}
+          srcDoc={htmlTemplate}
+          style={{ width: '100%', height: '100%', border: 'none', backgroundColor: 'transparent' }}
+        />
+      </View>
     );
   }
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-      <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-      <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-      <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
-      <style>
-        body { 
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-          font-size: 15px; 
-          color: #111827; 
-          margin: 0; 
-          padding: 2px;
-          word-wrap: break-word;
-          overflow-y: hidden;
-        }
-        p { margin-top: 0; margin-bottom: 12px; }
-        p:last-child { margin-bottom: 0; }
-        code { background: #F3F4F6; padding: 2px 4px; border-radius: 4px; font-family: monospace; font-size: 13px; }
-        pre { background: #F3F4F6; padding: 12px; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 13px;}
-        pre code { background: transparent; padding: 0; }
-        strong { font-weight: 600; }
-        em { font-style: italic; }
-      </style>
-    </head>
-    <body>
-      <div id="content"></div>
-      <script>
-        document.getElementById('content').innerHTML = marked.parse(${JSON.stringify(content || '')});
-        
-        renderMathInElement(document.body, {
-          delimiters: [
-            {left: "$$", right: "$$", display: true},
-            {left: "$", right: "$", display: false}
-          ],
-          throwOnError: false
-        });
-
-        let lastHeight = 0;
-        const sendHeight = () => {
-          const contentHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-          if (contentHeight !== lastHeight) {
-            lastHeight = contentHeight;
-            window.ReactNativeWebView.postMessage(contentHeight.toString());
-          }
-        };
-        
-        const observer = new MutationObserver(() => {
-          clearTimeout(window.resizeTimer);
-          window.resizeTimer = setTimeout(sendHeight, 50);
-        });
-        
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-        
-        window.onload = sendHeight;
-      </script>
-    </body>
-    </html>
-  `;
-
   return (
-    <View style={{ height, width: '100%', minHeight: 40, opacity }}>
+    <View style={{ height, width: '100%', minHeight: 40 }}>
       <WebView
+        ref={webViewRef}
         originWhitelist={['*']}
-        source={{ html }}
+        source={{ html: htmlTemplate }}
         style={{ height, width: '100%', backgroundColor: 'transparent' }}
         scrollEnabled={false}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         bounces={false}
-        onMessage={(event) => {
-          const contentHeight = Number(event.nativeEvent.data);
-          if (contentHeight > 0) {
-            setHeight(contentHeight + 12); 
-            setOpacity(1); 
-          }
-        }}
+        onMessage={(event: any) => handleMessage(event.nativeEvent.data)}
       />
     </View>
   );
@@ -285,6 +385,14 @@ export default function ChatScreen() {
   };
 
   useEffect(() => {
+    setActiveSession(null);
+    setMessages([]);
+    setSelectedTopic(null);
+    setFolderStack([]);
+    setCurrentFolderId(null);
+  }, [subjectId]);
+
+  useEffect(() => {
     if (paramFolderId && !currentFolderId) {
       setCurrentFolderId(paramFolderId.toString());
     }
@@ -319,7 +427,7 @@ export default function ChatScreen() {
     
     return () => {
       if (interval) clearInterval(interval);
-    };
+    }
   }, [focusTimerStatus, timeRemaining]);
 
   async function loadSidebarData() {
@@ -332,16 +440,26 @@ export default function ChatScreen() {
         getSessions(subjectId, targetFolderId as string | null)
       ]);
       
-      setFolders(fetchedFolders);
-      setSessions(fetchedSessions);
+      const subjectFolders = fetchedFolders.filter(f => (f as any).subject_id === subjectId || !('subject_id' in f));
+      const subjectSessions = fetchedSessions.filter(s => (s as any).subject_id === subjectId);
+
+      setFolders(subjectFolders);
+      setSessions(subjectSessions);
       
-      if (paramSessionId && !activeSession) {
-        const targetSession = fetchedSessions.find(s => s.id === paramSessionId.toString());
+      let currentActive = activeSession;
+      if (currentActive && !subjectSessions.some(s => s.id === currentActive!.id)) {
+        currentActive = null;
+        setActiveSession(null);
+        setMessages([]);
+      }
+      
+      if (paramSessionId && !currentActive) {
+        const targetSession = subjectSessions.find(s => s.id === paramSessionId.toString());
         if (targetSession) {
           setActiveSession(targetSession);
         }
-      } else if (!activeSession && !targetFolderId && fetchedSessions.length > 0 && !paramSessionId) {
-          const unarchived = fetchedSessions.filter(s => !s.is_archived);
+      } else if (!currentActive && !targetFolderId && subjectSessions.length > 0 && !paramSessionId) {
+          const unarchived = subjectSessions.filter(s => !s.is_archived);
           if (unarchived.length > 0) setActiveSession(unarchived[0]);
       }
     } catch (error) {
@@ -352,6 +470,8 @@ export default function ChatScreen() {
   }
 
   async function loadMessages(sessionId: string) {
+    if (!isValidUUID(sessionId)) return; 
+    
     try {
       const { data, error } = await supabase
         .from('chat_messages')
@@ -410,7 +530,7 @@ export default function ChatScreen() {
     setInitialFocusSeconds(totalSeconds);
     setTimeRemaining(totalSeconds);
     setFocusTimerStatus('running');
-    if (activeSession && activeSession.id) {
+    if (activeSession && activeSession.id && isValidUUID(activeSession.id as string)) {
        await updateSolveStage(activeSession.id as string, 'focus_timer', { startedAt: new Date().toISOString(), duration: totalSeconds });
     }
   }
@@ -420,7 +540,7 @@ export default function ChatScreen() {
     setFocusTimerStatus('idle');
     setSolvePhase('grading_and_review');
     
-    if (activeSession && activeSession.id) {
+    if (activeSession && activeSession.id && isValidUUID(activeSession.id as string)) {
        const newTotalActualSeconds = (activeSession.actual_focus_seconds || 0) + actualSecondsSpent;
        
        await updateSolveStage(activeSession.id as string, 'grading_and_review', { 
@@ -470,6 +590,7 @@ export default function ChatScreen() {
     setIsSending(true);
     setInputText(''); 
     setAttachment(null);
+    let tempAiMsgId = '';
     
     try {
       let sessionToUse = activeSession;
@@ -479,7 +600,7 @@ export default function ChatScreen() {
           subjectId, 
           currentFolderId as string | null, 
           activeMode, 
-          'gemini-3.5-flash', 
+          'gemini-3.5-flash-lite', 
           undefined, 
           selectedTopic && selectedTopic !== 'Other topics' ? selectedTopic : null
         );
@@ -514,26 +635,43 @@ export default function ChatScreen() {
       }]);
       handleScrollToEnd();
 
-      supabase.from('chat_messages').insert([{
-        session_id: sessionToUse.id as string,
-        user_id: sessionToUse.user_id as string,
-        sender: 'user',
-        content: displayContent,
-        status: 'completed'
-      }]).select().single().then(({ data, error }) => {
-        if (!error && data) {
-          setMessages(prev => prev.map(m => m.id === tempUserMsgId ? data as ChatMessage : m));
-        }
-      });
+      if (isValidUUID(sessionToUse.id as string)) {
+        supabase.from('chat_messages').insert([{
+          session_id: sessionToUse.id as string,
+          user_id: sessionToUse.user_id as string,
+          sender: 'user',
+          content: displayContent,
+          status: 'completed'
+        }]).select().single().then(({ data, error }) => {
+          if (!error && data) {
+            setMessages(prev => prev.map(m => m.id === tempUserMsgId ? data as ChatMessage : m));
+          }
+        });
+      }
 
       if (!sessionToUse.title_confirmed) {
-        const hint = rawInputText ? rawInputText.split(' ')[0] : 'Session';
-        setSuggestedTitle(`Understanding ${hint.charAt(0).toUpperCase() + hint.slice(1)}`);
+        let smartTitle = "New Study Session";
+        
+        if (selectedTopic && selectedTopic !== 'Other topics') {
+          smartTitle = `${selectedTopic} Practice`;
+        } else if (rawInputText) {
+          const cleanedText = rawInputText.replace(/[\r\n]+/g, ' ').trim();
+          const words = cleanedText.split(' ').filter(w => w);
+          if (words.length > 0) {
+            const snippet = words.slice(0, 6).join(' ');
+            smartTitle = snippet.length > 30 ? snippet.substring(0, 30).trim() + '...' : snippet;
+            smartTitle = smartTitle.charAt(0).toUpperCase() + smartTitle.slice(1);
+          }
+        } else if (currentAttachment) {
+          smartTitle = "Visual Problem Analysis";
+        }
+
+        setSuggestedTitle(smartTitle);
         setCustomTitle('');
         setShowTitleModal(true);
       }
 
-      const tempAiMsgId = 'temp-ai-' + Date.now();
+      tempAiMsgId = 'temp-ai-' + Date.now();
       setMessages(prev => [...prev, {
         id: tempAiMsgId,
         session_id: sessionToUse.id as string,
@@ -551,7 +689,7 @@ export default function ChatScreen() {
 
       const aiResponseText = await generateAIResponse(aiPromptText, {
         mode: activeMode,
-        model_id: sessionToUse.model_id || 'gemini-3.5-flash',
+        model_id: sessionToUse.model_id || 'gemini-3.5-flash-lite',
         solvePhase: activeMode === 'SolariSolve' ? solvePhase : undefined,
         conversationHistory: messages.map(m => ({ sender: m.sender as 'user' | 'ai', content: m.content || '' })),
         attachment: currentAttachment ? { base64: currentAttachment.base64, mimeType: currentAttachment.mimeType } : undefined
@@ -572,35 +710,50 @@ export default function ChatScreen() {
 
       if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems') {
         setSolvePhase('focus_timer');
-        await updateSolveStage(sessionToUse.id as string, 'focus_timer');
+        if (isValidUUID(sessionToUse.id as string)) {
+          await updateSolveStage(sessionToUse.id as string, 'focus_timer');
+        }
       }
 
-      const { data: insertedAiMsg, error: aiError } = await supabase
-        .from('chat_messages')
-        .insert([{
-          session_id: sessionToUse.id as string,
-          user_id: sessionToUse.user_id as string,
-          sender: 'ai',
-          content: finalAiText,
-          status: 'completed',
-          score_earned: scoreEarned,
-          score_possible: scorePossible,
-          include_in_accuracy: scorePossible !== null
-        }])
-        .select()
-        .single();
-        
-      if (!aiError && insertedAiMsg) {
-        setMessages(prev => prev.map(m => m.id === tempAiMsgId ? insertedAiMsg as ChatMessage : m));
-        
-        if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems' && currentAttachment && insertedAiMsg.id) {
-          await saveOcrExtraction(insertedAiMsg.id as string, finalAiText, currentAttachment.uri);
+      if (isValidUUID(sessionToUse.id as string)) {
+        const { data: insertedAiMsg, error: aiError } = await supabase
+          .from('chat_messages')
+          .insert([{
+            session_id: sessionToUse.id as string,
+            user_id: sessionToUse.user_id as string,
+            sender: 'ai',
+            content: finalAiText,
+            status: 'completed',
+            score_earned: scoreEarned,
+            score_possible: scorePossible,
+            include_in_accuracy: scorePossible !== null
+          }])
+          .select()
+          .single();
+          
+        if (!aiError && insertedAiMsg) {
+          setMessages(prev => prev.map(m => m.id === tempAiMsgId ? insertedAiMsg as ChatMessage : m));
+          
+          if (activeMode === 'SolariSolve' && solvePhase === 'ingest_problems' && currentAttachment && insertedAiMsg.id) {
+            await saveOcrExtraction(insertedAiMsg.id as string, finalAiText, currentAttachment.uri);
+          }
         }
+      } else {
+         setMessages(prev => prev.map(m => m.id === tempAiMsgId ? { ...m, content: finalAiText } : m));
       }
       handleScrollToEnd();
 
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error("AI Generation Error:", error);
+      
+      if (tempAiMsgId) {
+        setMessages(prev => prev.filter(m => m.id !== tempAiMsgId));
+      }
+      
+      Alert.alert(
+        "High Demand", 
+        "The AI is thinking a bit too hard right now due to high traffic. Please wait a moment and try sending your message again."
+      );
     } finally {
       setIsSending(false);
     }
@@ -610,7 +763,9 @@ export default function ChatScreen() {
     if (!message.id) return;
     try {
       const newStatus = !message.include_in_accuracy;
-      await toggleMessageAccuracy(message.id as string, newStatus);
+      if (isValidUUID(message.id as string)) {
+        await toggleMessageAccuracy(message.id as string, newStatus);
+      }
       setMessages(prev => prev.map(m => m.id === message.id ? { ...m, include_in_accuracy: newStatus } : m));
     } catch (error) {
       console.error(error);
@@ -621,7 +776,11 @@ export default function ChatScreen() {
     if (!activeSession || !activeSession.id || !titleToSave.trim()) return;
     try {
       const finalTitle = titleToSave.trim();
-      await updateSessionState(activeSession.id as string, { title: finalTitle, title_confirmed: true });
+      
+      if (isValidUUID(activeSession.id as string)) {
+        await updateSessionState(activeSession.id as string, { title: finalTitle, title_confirmed: true });
+      }
+      
       const updatedSession = { ...activeSession, title: finalTitle, title_confirmed: true };
       setActiveSession(updatedSession);
       setSessions(prev => prev.map(s => s.id === activeSession.id ? updatedSession : s));
@@ -647,12 +806,13 @@ export default function ChatScreen() {
   async function handleClearChat() {
     if (!sessionToEdit || !sessionToEdit.id) return;
     try {
-      const { error } = await supabase
-        .from('chat_messages')
-        .delete()
-        .eq('session_id', sessionToEdit.id as string);
-      
-      if (error) throw error;
+      if (isValidUUID(sessionToEdit.id as string)) {
+        const { error } = await supabase
+          .from('chat_messages')
+          .delete()
+          .eq('session_id', sessionToEdit.id as string);
+        if (error) throw error;
+      }
       
       if (activeSession?.id === sessionToEdit.id) {
         setMessages([]);
@@ -669,7 +829,9 @@ export default function ChatScreen() {
     if (!sessionToEdit || !sessionToEdit.id) return;
     const newStatus = !sessionToEdit.is_favorited;
     try {
-      await updateSessionState(sessionToEdit.id as string, { is_favorited: newStatus });
+      if (isValidUUID(sessionToEdit.id as string)) {
+        await updateSessionState(sessionToEdit.id as string, { is_favorited: newStatus });
+      }
       setSessions(prev => prev.map(s => s.id === sessionToEdit.id ? { ...s, is_favorited: newStatus } : s));
       if (activeSession?.id === sessionToEdit.id) {
         setActiveSession({ ...activeSession, is_favorited: newStatus });
@@ -684,7 +846,9 @@ export default function ChatScreen() {
   async function handleArchiveSession() {
     if (!sessionToEdit || !sessionToEdit.id) return;
     try {
-      await updateSessionState(sessionToEdit.id as string, { is_archived: true });
+      if (isValidUUID(sessionToEdit.id as string)) {
+        await updateSessionState(sessionToEdit.id as string, { is_archived: true });
+      }
       setSessions(prev => prev.map(s => s.id === sessionToEdit.id ? { ...s, is_archived: true } : s));
       if (activeSession?.id === sessionToEdit.id) setActiveSession(null);
     } catch (error) {
@@ -697,7 +861,9 @@ export default function ChatScreen() {
   async function handleDeleteSession() {
     if (!sessionToEdit || !sessionToEdit.id) return;
     try {
-      await deleteSession(sessionToEdit.id as string);
+      if (isValidUUID(sessionToEdit.id as string)) {
+        await deleteSession(sessionToEdit.id as string);
+      }
       setSessions(prev => prev.filter(s => s.id !== sessionToEdit.id));
       if (activeSession?.id === sessionToEdit.id) setActiveSession(null);
     } catch (error) {
@@ -745,7 +911,7 @@ export default function ChatScreen() {
   );
 
   const renderFocusEngine = () => (
-    <View style={styles.focusEngineContainer}>
+    <ScrollView contentContainerStyle={styles.focusEngineContainer} bounces={false}>
       {focusTimerStatus === 'idle' ? (
         <>
           <Feather name="clock" size={48} color="#185B37" style={{ marginBottom: 24 }} />
@@ -770,7 +936,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </>
       )}
-    </View>
+    </ScrollView>
   );
 
   const getPlaceholderText = () => {
@@ -1062,7 +1228,7 @@ export default function ChatScreen() {
               <View style={styles.modelBadge}>
                 <Feather name="zap" size={10} color="#185B37" style={{ marginRight: 4 }} />
                 <Text style={styles.modelBadgeText}>
-                  {activeSession ? `[${activeSession.mode === 'SolariSolve' ? 'Solve' : 'Learn'}] • ` : ''}Gemini 1.5 Flash
+                  {activeSession ? `[${activeSession.mode === 'SolariSolve' ? 'Solve' : 'Learn'}] • ` : ''}Gemini 3.5 Flash-Lite
                 </Text>
               </View>
             </View>
@@ -1177,18 +1343,11 @@ export default function ChatScreen() {
   );
 }
 
-const markdownStyles = StyleSheet.create({
-  body: { fontFamily: 'Bricolage_400', fontSize: 15, lineHeight: 24, color: '#111827' },
-  code_block: { backgroundColor: '#F3F4F6', padding: 12, borderRadius: 8, fontFamily: 'monospace', marginVertical: 8 },
-  strong: { fontFamily: 'Bricolage_600' },
-  em: { fontStyle: 'italic' }
-});
-
 const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'row', backgroundColor: '#F4F5F7' },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0, 0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalCard: { backgroundColor: '#FFF', padding: 24, borderRadius: 16, width: 400, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 24, elevation: 8 },
+  modalCard: { backgroundColor: '#FFF', padding: 24, borderRadius: 16, width: 400, boxShadow: '0px 12px 24px rgba(0,0,0,0.1)', elevation: 8 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   modalIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#E6F0EB', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   modalTitle: { fontSize: 18, fontFamily: 'Bricolage_600', color: '#111827' },
@@ -1259,7 +1418,7 @@ const styles = StyleSheet.create({
   modeCardsWrapper: { marginBottom: 32, width: '100%', maxWidth: 640 },
   modeCardsTitle: { fontFamily: 'Bricolage_600', fontSize: 15, color: '#4B5563', marginBottom: 16, textAlign: 'center' },
   modeCardsContainer: { flexDirection: Platform.OS === 'web' ? 'row' : 'column', gap: 16, justifyContent: 'center' },
-  modeCard: { flex: 1, backgroundColor: '#FFFFFF', padding: 20, borderRadius: 20, borderWidth: 2, borderColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 },
+  modeCard: { flex: 1, backgroundColor: '#FFFFFF', padding: 20, borderRadius: 20, borderWidth: 2, borderColor: '#E5E7EB', boxShadow: '0px 4px 8px rgba(0,0,0,0.03)', elevation: 2 },
   modeCardActive: { borderColor: '#185B37', backgroundColor: '#F9FCFA' },
   modeIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   modeIconBoxActive: { backgroundColor: '#E6F0EB' },
@@ -1267,20 +1426,20 @@ const styles = StyleSheet.create({
   modeCardTitleActive: { color: '#185B37' },
   modeCardSub: { fontFamily: 'Bricolage_400', fontSize: 13, color: '#6B7280', lineHeight: 20 },
 
-  focusEngineContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F5F7', padding: 24 },
+  focusEngineContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F5F7', padding: 24 },
   focusTitle: { fontFamily: 'Bricolage_600', fontSize: 28, color: '#111827', marginBottom: 12 },
   focusSubtitle: { fontFamily: 'Bricolage_400', fontSize: 16, color: '#6B7280', marginBottom: 32, textAlign: 'center' },
   focusPresetsRow: { flexDirection: 'row', gap: 16, flexWrap: 'wrap', justifyContent: 'center' },
-  focusPresetBtn: { paddingVertical: 12, paddingHorizontal: 24, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+  focusPresetBtn: { paddingVertical: 12, paddingHorizontal: 24, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', boxShadow: '0px 2px 4px rgba(0,0,0,0.05)', elevation: 1 },
   focusPresetText: { fontFamily: 'Bricolage_600', fontSize: 16, color: '#185B37' },
-  focusTimerText: { fontFamily: 'Bricolage_600', fontSize: 80, color: '#111827', letterSpacing: -2, marginBottom: 16, fontVariant: ['tabular-nums'] },
+  focusTimerText: { fontFamily: 'Bricolage_600', fontSize: 56, color: '#111827', letterSpacing: -2, marginBottom: 16, fontVariant: ['tabular-nums'] },
   finishFocusBtn: { marginTop: 24, paddingVertical: 16, paddingHorizontal: 32, backgroundColor: '#111827', borderRadius: 16 },
   finishFocusBtnText: { fontFamily: 'Bricolage_600', fontSize: 16, color: '#FFFFFF' },
 
   topicContainer: { maxWidth: 640, width: '100%', marginBottom: 32 },
   topicPromptText: { fontFamily: 'Bricolage_600', fontSize: 15, color: '#4B5563', marginBottom: 16, textAlign: 'center' },
   topicChipsWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  topicChip: { backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
+  topicChip: { backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB', boxShadow: '0px 2px 4px rgba(0,0,0,0.03)', elevation: 1 },
   topicChipText: { fontFamily: 'Bricolage_500', fontSize: 14, color: '#185B37' },
 
   centeredInputZone: { width: '100%', maxWidth: 800 },
@@ -1304,10 +1463,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6, 
     backgroundColor: '#FFFFFF',
     minHeight: 56,
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.04, 
-    shadowRadius: 12, 
+    boxShadow: '0px 4px 12px rgba(0,0,0,0.04)', 
     elevation: 2 
   },
   attachButton: { padding: 8, justifyContent: 'center', alignItems: 'center' },
@@ -1334,7 +1490,7 @@ const styles = StyleSheet.create({
   chatBubbleContainer: { flexDirection: 'row', marginBottom: 24, width: '100%' },
   userBubbleContainer: { justifyContent: 'flex-end', paddingLeft: 60 },
   aiBubbleContainer: { justifyContent: 'flex-start', paddingRight: 60 },
-  bubbleContent: { padding: 16, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 4, elevation: 1 },
+  bubbleContent: { padding: 16, borderRadius: 20, boxShadow: '0px 2px 4px rgba(0,0,0,0.02)', elevation: 1 },
   userBubble: { backgroundColor: '#E6F0EB', borderBottomRightRadius: 4 },
   aiBubble: { backgroundColor: '#FFFFFF', borderBottomLeftRadius: 4, borderWidth: 1, borderColor: '#E5E7EB' },
   bubbleText: { fontFamily: 'Bricolage_400', fontSize: 15, lineHeight: 24 },
